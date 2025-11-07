@@ -52,9 +52,21 @@
 
   --primary-foreground: 210 20% 98%;
 
-  --secondary: 210 8% 86%;
+  --secondary: 271 76% 67%;
 
-  --secondary-foreground: 215 25% 20%;
+  --secondary-foreground: 210 20% 98%;
+  
+  --success: 158 64% 52%;
+  
+  --success-foreground: 210 20% 98%;
+  
+  --warning: 38 92% 50%;
+  
+  --warning-foreground: 215 25% 15%;
+  
+  --gamification: 328 86% 70%;
+  
+  --gamification-foreground: 210 20% 98%;
 
   --muted: 210 12% 90%;
 
@@ -121,6 +133,18 @@
   /* Fallback for older browsers */
   --destructive-border: hsl(var(--destructive));
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  
+  /* Fallback for older browsers */
+  --success-border: hsl(var(--success));
+  --success-border: hsl(from hsl(var(--success)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  
+  /* Fallback for older browsers */
+  --warning-border: hsl(var(--warning));
+  --warning-border: hsl(from hsl(var(--warning)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  
+  /* Fallback for older browsers */
+  --gamification-border: hsl(var(--gamification));
+  --gamification-border: hsl(from hsl(var(--gamification)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
 .dark {
@@ -171,9 +195,21 @@
 
   --primary-foreground: 210 20% 98%;
 
-  --secondary: 215 14% 20%;
+  --secondary: 271 76% 67%;
 
-  --secondary-foreground: 210 20% 92%;
+  --secondary-foreground: 210 20% 98%;
+  
+  --success: 158 64% 52%;
+  
+  --success-foreground: 210 20% 98%;
+  
+  --warning: 38 92% 50%;
+  
+  --warning-foreground: 215 25% 15%;
+  
+  --gamification: 328 86% 70%;
+  
+  --gamification-foreground: 210 20% 98%;
 
   --muted: 215 14% 16%;
 
@@ -212,6 +248,9 @@
   --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --success-border: hsl(from hsl(var(--success)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --warning-border: hsl(from hsl(var(--warning)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --gamification-border: hsl(from hsl(var(--gamification)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
 @layer base {
