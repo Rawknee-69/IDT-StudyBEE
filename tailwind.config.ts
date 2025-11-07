@@ -51,6 +51,21 @@ export default {
           foreground: "hsl(var(--destructive-foreground) / <alpha-value>)",
           border: "var(--destructive-border)",
         },
+        success: {
+          DEFAULT: "hsl(var(--success) / <alpha-value>)",
+          foreground: "hsl(var(--success-foreground) / <alpha-value>)",
+          border: "var(--success-border)",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning) / <alpha-value>)",
+          foreground: "hsl(var(--warning-foreground) / <alpha-value>)",
+          border: "var(--warning-border)",
+        },
+        gamification: {
+          DEFAULT: "hsl(var(--gamification) / <alpha-value>)",
+          foreground: "hsl(var(--gamification-foreground) / <alpha-value>)",
+          border: "var(--gamification-border)",
+        },
         ring: "hsl(var(--ring) / <alpha-value>)",
         chart: {
           "1": "hsl(var(--chart-1) / <alpha-value>)",
