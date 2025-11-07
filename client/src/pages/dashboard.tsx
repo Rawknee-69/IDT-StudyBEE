@@ -1,14 +1,38 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BookOpen, Brain, FileText, Target, Trophy, Timer, CheckSquare, Flame } from "lucide-react";
 import { Link } from "wouter";
 
+type StudySession = {
+  id: string;
+  duration: number;
+  isConcentrationMode: boolean;
+  startTime: string;
+};
+
+type QuizAttempt = {
+  id: string;
+  score: number;
+  isCancelled: boolean;
+};
+
 export default function Dashboard() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading, user } = useAuth();
+
+  const { data: studySessions } = useQuery<StudySession[]>({
+    queryKey: ["/api/study-sessions"],
+    enabled: isAuthenticated,
+  });
+
+  const { data: quizAttempts } = useQuery<QuizAttempt[]>({
+    queryKey: ["/api/quiz-attempts"],
+    enabled: isAuthenticated,
+  });
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -41,6 +65,44 @@ export default function Dashboard() {
 
   const needsProfile = !user.degree || !user.className;
 
+  const totalStudyTime = studySessions?.reduce((total, session) => total + session.duration, 0) || 0;
+  
+  const completedQuizzes = quizAttempts?.filter((a) => !a.isCancelled) || [];
+  const averageQuizScore = completedQuizzes.length > 0
+    ? Math.round(completedQuizzes.reduce((sum, a) => sum + a.score, 0) / completedQuizzes.length)
+    : 0;
+
+  const calculateStreak = () => {
+    if (!studySessions || studySessions.length === 0) return 0;
+    
+    const focusSessions = studySessions
+      .filter((s) => s.duration >= 30)
+      .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    
+    if (focusSessions.length === 0) return 0;
+    
+    let streak = 0;
+    let currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0);
+    
+    for (const session of focusSessions) {
+      const sessionDate = new Date(session.startTime);
+      sessionDate.setHours(0, 0, 0, 0);
+      
+      const diffDays = Math.floor((currentDate.getTime() - sessionDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === streak) {
+        streak++;
+      } else if (diffDays > streak) {
+        break;
+      }
+    }
+    
+    return streak;
+  };
+
+  const currentStreak = calculateStreak();
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
@@ -71,7 +133,9 @@ export default function Dashboard() {
               <Timer className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold" data-testid="text-study-time">{user.totalStudyTime} min</p>
+              <p className="text-2xl font-bold" data-testid="text-study-time">
+                {Math.floor(totalStudyTime / 60)}h {totalStudyTime % 60}m
+              </p>
               <p className="text-sm text-muted-foreground">Total Study Time</p>
             </div>
           </div>
@@ -83,7 +147,7 @@ export default function Dashboard() {
               <Flame className="h-6 w-6 text-gamification" />
             </div>
             <div>
-              <p className="text-2xl font-bold" data-testid="text-streak">{user.currentStreak} days</p>
+              <p className="text-2xl font-bold" data-testid="text-streak">{currentStreak} days</p>
               <p className="text-sm text-muted-foreground">Current Streak</p>
             </div>
           </div>
@@ -95,8 +159,8 @@ export default function Dashboard() {
               <Trophy className="h-6 w-6 text-success" />
             </div>
             <div>
-              <p className="text-2xl font-bold" data-testid="text-quiz-score">{user.totalQuizScore}</p>
-              <p className="text-sm text-muted-foreground">Total Quiz Score</p>
+              <p className="text-2xl font-bold" data-testid="text-quiz-score">{averageQuizScore}%</p>
+              <p className="text-sm text-muted-foreground">Average Quiz Score</p>
             </div>
           </div>
         </Card>

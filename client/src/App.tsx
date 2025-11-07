@@ -17,6 +17,9 @@ import Flashcards from "@/pages/flashcards";
 import Quizzes from "@/pages/quizzes";
 import Summaries from "@/pages/summaries";
 import Todos from "@/pages/todos";
+import Pomodoro from "@/pages/pomodoro";
+import Concentration from "@/pages/concentration";
+import Leaderboard from "@/pages/leaderboard";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -36,6 +39,9 @@ function Router() {
           <Route path="/quizzes" component={Quizzes} />
           <Route path="/summaries" component={Summaries} />
           <Route path="/todos" component={Todos} />
+          <Route path="/pomodoro" component={Pomodoro} />
+          <Route path="/concentration" component={Concentration} />
+          <Route path="/leaderboard" component={Leaderboard} />
           {/* Add more authenticated routes here */}
         </>
       )}
