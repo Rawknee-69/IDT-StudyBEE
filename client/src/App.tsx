@@ -12,6 +12,7 @@ import Profile from "@/pages/profile";
 import Materials from "@/pages/materials";
 import Chat from "@/pages/chat";
 import Flashcards from "@/pages/flashcards";
+import Quizzes from "@/pages/quizzes";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -28,6 +29,7 @@ function Router() {
           <Route path="/materials" component={Materials} />
           <Route path="/chat" component={Chat} />
           <Route path="/flashcards" component={Flashcards} />
+          <Route path="/quizzes" component={Quizzes} />
           {/* Add more authenticated routes here */}
         </>
       )}
