@@ -10,6 +10,8 @@ import ReactFlow, {
   Position,
   NodeProps,
   Handle,
+  useReactFlow,
+  ReactFlowProvider,
 } from 'reactflow';
 import dagre from 'dagre';
 import 'reactflow/dist/style.css';
@@ -151,10 +153,11 @@ const transformToReactFlow = (
   return { nodes, edges };
 };
 
-export function MindMapCanvas({ data }: MindMapCanvasProps) {
+function MindMapCanvasInner({ data }: MindMapCanvasProps) {
   const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set());
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const { fitView } = useReactFlow();
 
   const handleToggleCollapse = useCallback((nodeId: string) => {
     setCollapsedNodes((prev) => {
@@ -187,11 +190,8 @@ export function MindMapCanvas({ data }: MindMapCanvasProps) {
   }, [data, collapsedNodes, handleToggleCollapse, setNodes, setEdges]);
 
   const handleFitView = useCallback(() => {
-    const reactFlowInstance = (window as any).__reactFlowInstance;
-    if (reactFlowInstance) {
-      reactFlowInstance.fitView({ padding: 0.2, duration: 300 });
-    }
-  }, []);
+    fitView({ padding: 0.2, duration: 300 });
+  }, [fitView]);
 
   const handleExpandAll = useCallback(() => {
     setCollapsedNodes(new Set());
@@ -211,7 +211,7 @@ export function MindMapCanvas({ data }: MindMapCanvasProps) {
   }, [data]);
 
   return (
-    <div className="w-full h-[600px] bg-background border border-border rounded-lg overflow-hidden">
+    <div className="relative w-full h-[600px] bg-background border border-border rounded-lg overflow-hidden">
       <div className="absolute top-4 left-4 z-10 flex gap-2">
         <Button
           size="sm"
@@ -251,14 +251,19 @@ export function MindMapCanvas({ data }: MindMapCanvasProps) {
         defaultEdgeOptions={{
           type: 'smoothstep',
         }}
-        onInit={(instance) => {
-          (window as any).__reactFlowInstance = instance;
-        }}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} className="bg-background" />
         <Controls className="bg-card border border-border" />
       </ReactFlow>
     </div>
+  );
+}
+
+export function MindMapCanvas(props: MindMapCanvasProps) {
+  return (
+    <ReactFlowProvider>
+      <MindMapCanvasInner {...props} />
+    </ReactFlowProvider>
   );
 }
