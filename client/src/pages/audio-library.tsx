@@ -118,7 +118,7 @@ export default function AudioLibrary() {
                 <FileText className="h-5 w-5 text-primary flex-shrink-0 mt-1" />
                 <div className="flex-1 min-w-0">
                   <Link
-                    href={`/materials/detail/${summary.materialId}`}
+                    href={`/materials/${summary.materialId}`}
                     className="font-semibold hover:text-primary transition-colors block truncate"
                     data-testid={`link-material-${summary.id}`}
                   >
