@@ -130,6 +130,21 @@ export function setupCollabWebSocket(server: Server) {
           case "concentration_toggle":
             await handleConcentrationToggle(ws, msg, userId);
             break;
+          case "chat_message":
+            await handleChatMessage(ws, msg, userId);
+            break;
+          case "reaction_add":
+            await handleReactionAdd(ws, msg, userId);
+            break;
+          case "presentation_upload":
+            await handlePresentationUpload(ws, msg, userId);
+            break;
+          case "presentation_control":
+            await handlePresentationControl(ws, msg, userId);
+            break;
+          case "drawing_state":
+            await handleDrawingState(ws, msg, userId);
+            break;
           default:
             console.log("Unknown message type:", msg.type);
         }
@@ -568,4 +583,227 @@ async function handleConcentrationToggle(ws: WebSocket, msg: WSMessage, userId: 
       data: { enabled: newMode },
     });
   }
+}
+
+async function handleChatMessage(ws: WebSocket, msg: WSMessage, userId: string) {
+  const { sessionId, data } = msg;
+  
+  // Verify participant authorization
+  const participant = await storage.getCollabParticipantByUserAndSession(userId, sessionId);
+  if (!participant) {
+    ws.close(1008, "Unauthorized");
+    return;
+  }
+  
+  // Check if participant is muted
+  if (participant.isMuted) {
+    sendToClient(ws, {
+      type: "chat_error",
+      sessionId,
+      data: { message: "You are muted and cannot send messages" },
+    });
+    return;
+  }
+  
+  // Save chat message
+  const chatMessage = await storage.createCollabChatMessage({
+    sessionId,
+    userId,
+    content: data.content,
+  });
+  
+  // Get user info
+  const user = await storage.getUser(userId);
+  
+  // Broadcast to all participants
+  broadcast(sessionId, {
+    type: "chat_message",
+    sessionId,
+    data: {
+      id: chatMessage.id,
+      userId,
+      userName: user ? `${user.firstName} ${user.lastName}` : "Unknown",
+      content: data.content,
+      createdAt: chatMessage.createdAt,
+    },
+  });
+}
+
+async function handleReactionAdd(ws: WebSocket, msg: WSMessage, userId: string) {
+  const { sessionId, data } = msg;
+  
+  // Verify participant authorization
+  const participant = await storage.getCollabParticipantByUserAndSession(userId, sessionId);
+  if (!participant) {
+    ws.close(1008, "Unauthorized");
+    return;
+  }
+  
+  // Save reaction
+  const reaction = await storage.createCollabReaction({
+    sessionId,
+    userId,
+    emoji: data.emoji,
+    x: data.x,
+    y: data.y,
+  });
+  
+  // Get user info
+  const user = await storage.getUser(userId);
+  
+  // Broadcast to all participants
+  broadcast(sessionId, {
+    type: "reaction_added",
+    sessionId,
+    data: {
+      id: reaction.id,
+      userId,
+      userName: user ? `${user.firstName} ${user.lastName}` : "Unknown",
+      emoji: data.emoji,
+      x: data.x,
+      y: data.y,
+      createdAt: reaction.createdAt,
+    },
+  });
+}
+
+async function handlePresentationUpload(ws: WebSocket, msg: WSMessage, userId: string) {
+  const { sessionId, data } = msg;
+  
+  // Verify participant authorization
+  const participant = await storage.getCollabParticipantByUserAndSession(userId, sessionId);
+  if (!participant) {
+    ws.close(1008, "Unauthorized");
+    return;
+  }
+  
+  // Create presentation record
+  const presentation = await storage.createCollabPresentation({
+    sessionId,
+    uploadedBy: userId,
+    fileName: data.fileName,
+    fileUrl: data.fileUrl,
+    fileType: data.fileType,
+    canEdit: data.canEdit || [],
+    currentPage: 1,
+    isActive: false,
+  });
+  
+  // Get user info
+  const user = await storage.getUser(userId);
+  
+  // Broadcast to all participants
+  broadcast(sessionId, {
+    type: "presentation_uploaded",
+    sessionId,
+    data: {
+      id: presentation.id,
+      uploadedBy: userId,
+      uploaderName: user ? `${user.firstName} ${user.lastName}` : "Unknown",
+      fileName: data.fileName,
+      fileUrl: data.fileUrl,
+      fileType: data.fileType,
+      canEdit: data.canEdit || [],
+      uploadedAt: presentation.uploadedAt,
+    },
+  });
+}
+
+async function handlePresentationControl(ws: WebSocket, msg: WSMessage, userId: string) {
+  const { sessionId, data } = msg;
+  
+  // Verify participant authorization
+  const participant = await storage.getCollabParticipantByUserAndSession(userId, sessionId);
+  if (!participant) {
+    ws.close(1008, "Unauthorized");
+    return;
+  }
+  
+  const { presentationId, action, value } = data;
+  
+  // Get presentation
+  const presentation = await storage.getCollabPresentation(presentationId);
+  if (!presentation || presentation.sessionId !== sessionId) {
+    return;
+  }
+  
+  // Check if user has edit permissions
+  const canEdit = presentation.canEdit as string[];
+  const isUploader = presentation.uploadedBy === userId;
+  const hasEditPermission = isUploader || canEdit.includes(userId);
+  
+  // Get session to check if user is host
+  const session = await storage.getCollabSession(sessionId);
+  const isHost = session?.hostUserId === userId;
+  
+  // Host can always control, others need edit permission for page changes
+  if (action === "setPage" && !isHost && !hasEditPermission) {
+    sendToClient(ws, {
+      type: "presentation_error",
+      sessionId,
+      data: { message: "You don't have permission to control this presentation" },
+    });
+    return;
+  }
+  
+  // Update presentation based on action
+  if (action === "setPage") {
+    await storage.updateCollabPresentation(presentationId, {
+      currentPage: value,
+    });
+  } else if (action === "setActive") {
+    await storage.updateCollabPresentation(presentationId, {
+      isActive: value,
+    });
+  } else if (action === "grantEdit") {
+    const newCanEdit = [...canEdit, value];
+    await storage.updateCollabPresentation(presentationId, {
+      canEdit: newCanEdit,
+    });
+  }
+  
+  // Broadcast control change to all participants
+  broadcast(sessionId, {
+    type: "presentation_control",
+    sessionId,
+    data: {
+      presentationId,
+      action,
+      value,
+      controlledBy: userId,
+    },
+  });
+}
+
+async function handleDrawingState(ws: WebSocket, msg: WSMessage, userId: string) {
+  const { sessionId, data } = msg;
+  
+  // Verify participant authorization
+  const participant = await storage.getCollabParticipantByUserAndSession(userId, sessionId);
+  if (!participant) {
+    ws.close(1008, "Unauthorized");
+    return;
+  }
+  
+  // Check if muted or if mute_all is active
+  if (participant.isMuted) {
+    return; // Silently ignore if muted
+  }
+  
+  // Get user info
+  const user = await storage.getUser(userId);
+  
+  // Broadcast drawing state to all participants
+  broadcast(sessionId, {
+    type: "drawing_state",
+    sessionId,
+    data: {
+      userId,
+      userName: user ? `${user.firstName} ${user.lastName}` : "Unknown",
+      isDrawing: data.isDrawing,
+      tool: data.tool, // pen, eraser, highlighter
+      color: data.color,
+      size: data.size,
+    },
+  }, ws);
 }

@@ -192,6 +192,44 @@ export const collabActivities = pgTable("collab_activities", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Group chat messages in collaboration sessions
+export const collabChatMessages = pgTable("collab_chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => collabSessions.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_chat_session_created").on(table.sessionId, table.createdAt),
+]);
+
+// Presentation files (pictures/PDFs) shared in collaboration sessions
+export const collabPresentations = pgTable("collab_presentations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => collabSessions.id, { onDelete: "cascade" }),
+  uploadedBy: varchar("uploaded_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  fileUrl: text("file_url").notNull(), // Object storage URL
+  fileType: text("file_type").notNull(), // 'image' or 'pdf'
+  currentPage: integer("current_page").notNull().default(1), // For PDF navigation
+  isActive: boolean("is_active").notNull().default(false), // Currently being presented
+  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_presentation_session").on(table.sessionId),
+  // Ensure only one active presentation per session
+  index("idx_presentation_active_session").on(table.sessionId).where(sql`${table.isActive} = true`),
+]);
+
+// Presentation editor permissions (normalized join table)
+export const collabPresentationEditors = pgTable("collab_presentation_editors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  presentationId: varchar("presentation_id").notNull().references(() => collabPresentations.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  grantedAt: timestamp("granted_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_presentation_user").on(table.presentationId, table.userId),
+]);
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -289,6 +327,21 @@ export const insertCollabActivitySchema = createInsertSchema(collabActivities).o
   createdAt: true,
 });
 
+export const insertCollabChatMessageSchema = createInsertSchema(collabChatMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCollabPresentationSchema = createInsertSchema(collabPresentations).omit({
+  id: true,
+  uploadedAt: true,
+});
+
+export const insertCollabPresentationEditorSchema = createInsertSchema(collabPresentationEditors).omit({
+  id: true,
+  grantedAt: true,
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UpsertUser = z.infer<typeof upsertUserSchema>;
@@ -348,3 +401,12 @@ export type CollabWhiteboard = typeof collabWhiteboards.$inferSelect;
 
 export type InsertCollabActivity = z.infer<typeof insertCollabActivitySchema>;
 export type CollabActivity = typeof collabActivities.$inferSelect;
+
+export type InsertCollabChatMessage = z.infer<typeof insertCollabChatMessageSchema>;
+export type CollabChatMessage = typeof collabChatMessages.$inferSelect;
+
+export type InsertCollabPresentation = z.infer<typeof insertCollabPresentationSchema>;
+export type CollabPresentation = typeof collabPresentations.$inferSelect;
+
+export type InsertCollabPresentationEditor = z.infer<typeof insertCollabPresentationEditorSchema>;
+export type CollabPresentationEditor = typeof collabPresentationEditors.$inferSelect;

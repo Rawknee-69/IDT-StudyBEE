@@ -33,6 +33,12 @@ import type {
   InsertCollabWhiteboard,
   CollabActivity,
   InsertCollabActivity,
+  CollabChatMessage,
+  InsertCollabChatMessage,
+  CollabReaction,
+  InsertCollabReaction,
+  CollabPresentation,
+  InsertCollabPresentation,
 } from "@shared/schema";
 import {
   users,
@@ -50,6 +56,9 @@ import {
   collabParticipants,
   collabWhiteboards,
   collabActivities,
+  collabChatMessages,
+  collabReactions,
+  collabPresentations,
 } from "@shared/schema";
 
 export interface IStorage {
