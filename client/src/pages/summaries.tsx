@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Sparkles, FileText, Loader2 } from "lucide-react";
+import { Sparkles, FileText, Loader2, Volume2, VolumeX } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -169,6 +169,25 @@ export default function Summaries() {
         </Card>
       ) : summary ? (
         <Card className="p-8" data-testid="card-summary">
+          {summary.audioUrl && (
+            <div className="mb-6 p-4 bg-muted rounded-lg" data-testid="audio-player-container">
+              <div className="flex items-center gap-3">
+                <Volume2 className="h-5 w-5 text-primary" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium mb-2">Listen to Summary</p>
+                  <audio
+                    controls
+                    className="w-full"
+                    data-testid="audio-player"
+                    preload="metadata"
+                  >
+                    <source src={summary.audioUrl} type="audio/mpeg" />
+                    Your browser does not support the audio element.
+                  </audio>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="prose prose-sm md:prose max-w-none dark:prose-invert">
             <div className="whitespace-pre-wrap">{summary.content}</div>
           </div>
