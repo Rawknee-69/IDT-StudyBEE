@@ -25,6 +25,14 @@ import type {
   InsertPomodoroSession,
   ChatMessage,
   InsertChatMessage,
+  CollabSession,
+  InsertCollabSession,
+  CollabParticipant,
+  InsertCollabParticipant,
+  CollabWhiteboard,
+  InsertCollabWhiteboard,
+  CollabActivity,
+  InsertCollabActivity,
 } from "@shared/schema";
 import {
   users,
@@ -38,6 +46,10 @@ import {
   todos,
   pomodoroSessions,
   chatMessages,
+  collabSessions,
+  collabParticipants,
+  collabWhiteboards,
+  collabActivities,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -129,6 +141,35 @@ export interface IStorage {
   getChatMessagesByMaterial(materialId: string): Promise<ChatMessage[]>;
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
   deleteChatMessagesByMaterial(materialId: string): Promise<void>;
+
+  // Collaboration Session operations
+  getCollabSession(id: string): Promise<CollabSession | undefined>;
+  getCollabSessionByCode(code: string): Promise<CollabSession | undefined>;
+  getCollabSessionsByHost(hostUserId: string): Promise<CollabSession[]>;
+  getActiveCollabSessionsByHost(hostUserId: string): Promise<CollabSession[]>;
+  createCollabSession(session: InsertCollabSession): Promise<CollabSession>;
+  updateCollabSession(id: string, updates: Partial<InsertCollabSession>): Promise<CollabSession | undefined>;
+  endCollabSession(id: string): Promise<CollabSession | undefined>;
+
+  // Collaboration Participant operations
+  getCollabParticipant(id: string): Promise<CollabParticipant | undefined>;
+  getCollabParticipantsBySession(sessionId: string): Promise<CollabParticipant[]>;
+  getActiveCollabParticipantsBySession(sessionId: string): Promise<CollabParticipant[]>;
+  getCollabParticipantByUserAndSession(userId: string, sessionId: string): Promise<CollabParticipant | undefined>;
+  createCollabParticipant(participant: InsertCollabParticipant): Promise<CollabParticipant>;
+  updateCollabParticipant(id: string, updates: Partial<InsertCollabParticipant>): Promise<CollabParticipant | undefined>;
+  removeCollabParticipant(id: string): Promise<void>;
+
+  // Collaboration Whiteboard operations
+  getCollabWhiteboard(id: string): Promise<CollabWhiteboard | undefined>;
+  getCollabWhiteboardBySession(sessionId: string): Promise<CollabWhiteboard | undefined>;
+  createCollabWhiteboard(whiteboard: InsertCollabWhiteboard): Promise<CollabWhiteboard>;
+  updateCollabWhiteboard(id: string, updates: Partial<InsertCollabWhiteboard>): Promise<CollabWhiteboard | undefined>;
+
+  // Collaboration Activity operations
+  getCollabActivity(id: string): Promise<CollabActivity | undefined>;
+  getCollabActivitiesBySession(sessionId: string): Promise<CollabActivity[]>;
+  createCollabActivity(activity: InsertCollabActivity): Promise<CollabActivity>;
 }
 
 export class DbStorage implements IStorage {

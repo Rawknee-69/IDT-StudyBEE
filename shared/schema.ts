@@ -144,6 +144,54 @@ export const chatMessages = pgTable("chat_messages", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Collaboration sessions for group study
+export const collabSessions = pgTable("collab_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  hostUserId: varchar("host_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  sessionCode: varchar("session_code", { length: 10 }).notNull().unique(), // For invitations
+  isActive: boolean("is_active").notNull().default(true),
+  concentrationMode: boolean("concentration_mode").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  endedAt: timestamp("ended_at"),
+});
+
+// Participants in collaboration sessions
+export const collabParticipants = pgTable("collab_participants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => collabSessions.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").notNull().default("member"), // 'host' or 'member'
+  isMuted: boolean("is_muted").notNull().default(false),
+  isBanned: boolean("is_banned").notNull().default(false),
+  tabSwitches: integer("tab_switches").notNull().default(0),
+  pauseCount: integer("pause_count").notNull().default(0),
+  isOnBreak: boolean("is_on_break").notNull().default(false),
+  breakStartTime: timestamp("break_start_time"),
+  breakDuration: integer("break_duration").notNull().default(0), // in seconds
+  joinedAt: timestamp("joined_at").notNull().defaultNow(),
+  leftAt: timestamp("left_at"),
+});
+
+// Whiteboard data for collaboration sessions
+export const collabWhiteboards = pgTable("collab_whiteboards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => collabSessions.id, { onDelete: "cascade" }).unique(),
+  content: jsonb("content").notNull().default(sql`'{}'::jsonb`), // Canvas drawing data
+  lastSavedAt: timestamp("last_saved_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Activity tracking for collaboration sessions
+export const collabActivities = pgTable("collab_activities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => collabSessions.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  activityType: text("activity_type").notNull(), // 'tab_switch', 'pause', 'unpause', 'break_start', 'break_end', 'join', 'leave'
+  metadata: jsonb("metadata"), // Additional activity data
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -220,6 +268,27 @@ export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
   createdAt: true,
 });
 
+export const insertCollabSessionSchema = createInsertSchema(collabSessions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCollabParticipantSchema = createInsertSchema(collabParticipants).omit({
+  id: true,
+  joinedAt: true,
+});
+
+export const insertCollabWhiteboardSchema = createInsertSchema(collabWhiteboards).omit({
+  id: true,
+  createdAt: true,
+  lastSavedAt: true,
+});
+
+export const insertCollabActivitySchema = createInsertSchema(collabActivities).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UpsertUser = z.infer<typeof upsertUserSchema>;
@@ -267,3 +336,15 @@ export type PomodoroSession = typeof pomodoroSessions.$inferSelect;
 
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 export type ChatMessage = typeof chatMessages.$inferSelect;
+
+export type InsertCollabSession = z.infer<typeof insertCollabSessionSchema>;
+export type CollabSession = typeof collabSessions.$inferSelect;
+
+export type InsertCollabParticipant = z.infer<typeof insertCollabParticipantSchema>;
+export type CollabParticipant = typeof collabParticipants.$inferSelect;
+
+export type InsertCollabWhiteboard = z.infer<typeof insertCollabWhiteboardSchema>;
+export type CollabWhiteboard = typeof collabWhiteboards.$inferSelect;
+
+export type InsertCollabActivity = z.infer<typeof insertCollabActivitySchema>;
+export type CollabActivity = typeof collabActivities.$inferSelect;
