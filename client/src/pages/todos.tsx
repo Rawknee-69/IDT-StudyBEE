@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Trash2, CheckCircle2 } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, CheckSquare } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -167,13 +167,16 @@ export default function Todos() {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-3xl">
-      <div className="mb-8">
-        <h1 className="font-heading font-bold text-3xl md:text-4xl mb-2" data-testid="text-todos-title">
-          Todo List
-        </h1>
-        <p className="text-muted-foreground" data-testid="text-todos-subtitle">
-          Manage your study tasks and stay organized
-        </p>
+      <div className="mb-8 flex items-center gap-3">
+        <CheckSquare className="h-8 w-8 text-primary" />
+        <div className="flex-1">
+          <h1 className="font-heading font-bold text-3xl md:text-4xl mb-2" data-testid="text-todos-title">
+            Todo List
+          </h1>
+          <p className="text-muted-foreground" data-testid="text-todos-subtitle">
+            Manage your study tasks and stay organized
+          </p>
+        </div>
       </div>
 
       <Card className="p-6 mb-8">

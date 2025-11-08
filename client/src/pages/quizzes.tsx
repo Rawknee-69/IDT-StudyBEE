@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Play, FileText, Trophy, AlertTriangle } from "lucide-react";
+import { Sparkles, Play, FileText, Trophy, AlertTriangle, Target } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -366,13 +366,16 @@ export default function Quizzes() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="font-heading font-bold text-3xl md:text-4xl mb-2" data-testid="text-quizzes-title">
-          Quizzes
-        </h1>
-        <p className="text-muted-foreground" data-testid="text-quizzes-subtitle">
-          Test your knowledge with AI-generated quizzes
-        </p>
+      <div className="mb-8 flex items-center gap-3">
+        <Target className="h-8 w-8 text-primary" />
+        <div className="flex-1">
+          <h1 className="font-heading font-bold text-3xl md:text-4xl mb-2" data-testid="text-quizzes-title">
+            Quizzes
+          </h1>
+          <p className="text-muted-foreground" data-testid="text-quizzes-subtitle">
+            Test your knowledge with AI-generated quizzes
+          </p>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4 mb-8">

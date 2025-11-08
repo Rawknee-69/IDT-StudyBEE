@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, FileText, Trash2, Download } from "lucide-react";
+import { Upload, FileText, Trash2, Download, BookOpen } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -165,13 +165,16 @@ export default function Materials() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="font-heading font-bold text-3xl md:text-4xl mb-2" data-testid="text-materials-title">
-          Study Materials
-        </h1>
-        <p className="text-muted-foreground" data-testid="text-materials-subtitle">
-          Upload your PDF study materials to unlock AI-powered features
-        </p>
+      <div className="mb-8 flex items-center gap-3">
+        <BookOpen className="h-8 w-8 text-primary" />
+        <div className="flex-1">
+          <h1 className="font-heading font-bold text-3xl md:text-4xl mb-2" data-testid="text-materials-title">
+            Study Materials
+          </h1>
+          <p className="text-muted-foreground" data-testid="text-materials-subtitle">
+            Upload your PDF study materials to unlock AI-powered features
+          </p>
+        </div>
       </div>
 
       <Card className="p-6 mb-8" data-testid="card-upload">

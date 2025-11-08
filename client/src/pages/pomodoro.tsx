@@ -186,13 +186,16 @@ export default function Pomodoro() {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
-      <div className="mb-8">
-        <h1 className="text-4xl font-heading font-bold mb-2" data-testid="text-page-title">
-          Pomodoro Timer
-        </h1>
-        <p className="text-muted-foreground" data-testid="text-page-description">
-          Stay focused with the Pomodoro Technique. Work in focused intervals with regular breaks.
-        </p>
+      <div className="mb-8 flex items-center gap-3">
+        <Clock className="h-8 w-8 text-primary" />
+        <div className="flex-1">
+          <h1 className="text-4xl font-heading font-bold mb-2" data-testid="text-page-title">
+            Pomodoro Timer
+          </h1>
+          <p className="text-muted-foreground" data-testid="text-page-description">
+            Stay focused with the Pomodoro Technique. Work in focused intervals with regular breaks.
+          </p>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-6">

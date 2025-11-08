@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { User } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -99,9 +100,12 @@ export default function Profile() {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-2xl">
-      <h1 className="font-heading font-bold text-3xl mb-6" data-testid="text-profile-title">
-        Complete Your Profile
-      </h1>
+      <div className="flex items-center gap-3 mb-6">
+        <User className="h-8 w-8 text-primary" />
+        <h1 className="font-heading font-bold text-3xl" data-testid="text-profile-title">
+          Complete Your Profile
+        </h1>
+      </div>
 
       <Card className="p-6" data-testid="card-profile-form">
         <form onSubmit={handleSubmit} className="space-y-6">

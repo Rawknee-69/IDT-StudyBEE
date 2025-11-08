@@ -69,13 +69,16 @@ export default function Leaderboard() {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
-      <div className="mb-8">
-        <h1 className="text-4xl font-heading font-bold mb-2" data-testid="text-page-title">
-          Leaderboards
-        </h1>
-        <p className="text-muted-foreground" data-testid="text-page-description">
-          Compete with fellow students and track your progress on the global rankings.
-        </p>
+      <div className="mb-8 flex items-center gap-3">
+        <Trophy className="h-8 w-8 text-primary" />
+        <div className="flex-1">
+          <h1 className="text-4xl font-heading font-bold mb-2" data-testid="text-page-title">
+            Leaderboards
+          </h1>
+          <p className="text-muted-foreground" data-testid="text-page-description">
+            Compete with fellow students and track your progress on the global rankings.
+          </p>
+        </div>
       </div>
 
       <Tabs defaultValue="study-time" className="w-full">

@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Sparkles, FileText, Loader2, Volume2, VolumeX } from "lucide-react";
+import { Sparkles, FileText, Loader2, Volume2, VolumeX, FileStack } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -118,13 +118,16 @@ export default function Summaries() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="font-heading font-bold text-3xl md:text-4xl mb-2" data-testid="text-summaries-title">
-          AI Summaries
-        </h1>
-        <p className="text-muted-foreground" data-testid="text-summaries-subtitle">
-          Get comprehensive AI-generated summaries of your study materials
-        </p>
+      <div className="mb-8 flex items-center gap-3">
+        <FileStack className="h-8 w-8 text-primary" />
+        <div className="flex-1">
+          <h1 className="font-heading font-bold text-3xl md:text-4xl mb-2" data-testid="text-summaries-title">
+            AI Summaries
+          </h1>
+          <p className="text-muted-foreground" data-testid="text-summaries-subtitle">
+            Get comprehensive AI-generated summaries of your study materials
+          </p>
+        </div>
       </div>
 
       <div className="mb-8">

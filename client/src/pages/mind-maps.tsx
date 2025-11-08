@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Network, Loader2, Eye } from "lucide-react";
+import { Sparkles, Network, Loader2, Eye, Map as MapIcon } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -135,13 +135,16 @@ export default function MindMaps() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="font-heading font-bold text-3xl md:text-4xl mb-2" data-testid="text-mind-maps-title">
-          Mind Maps
-        </h1>
-        <p className="text-muted-foreground" data-testid="text-mind-maps-subtitle">
-          Generate visual concept maps from your study materials
-        </p>
+      <div className="mb-8 flex items-center gap-3">
+        <MapIcon className="h-8 w-8 text-primary" />
+        <div className="flex-1">
+          <h1 className="font-heading font-bold text-3xl md:text-4xl mb-2" data-testid="text-mind-maps-title">
+            Mind Maps
+          </h1>
+          <p className="text-muted-foreground" data-testid="text-mind-maps-subtitle">
+            Generate visual concept maps from your study materials
+          </p>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-8">

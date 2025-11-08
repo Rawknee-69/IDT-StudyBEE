@@ -249,13 +249,16 @@ export default function Flashcards() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="font-heading font-bold text-3xl md:text-4xl mb-2" data-testid="text-flashcards-title">
-          Flashcards
-        </h1>
-        <p className="text-muted-foreground" data-testid="text-flashcards-subtitle">
-          AI-generated or create your own flashcards for effective studying
-        </p>
+      <div className="mb-8 flex items-center gap-3">
+        <FileText className="h-8 w-8 text-primary" />
+        <div className="flex-1">
+          <h1 className="font-heading font-bold text-3xl md:text-4xl mb-2" data-testid="text-flashcards-title">
+            Flashcards
+          </h1>
+          <p className="text-muted-foreground" data-testid="text-flashcards-subtitle">
+            AI-generated or create your own flashcards for effective studying
+          </p>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4 mb-8">
