@@ -92,7 +92,8 @@ Preferred communication style: Simple, everyday language.
 - Audio format: WAV (linear16 encoding) for universal browser compatibility
 - Audio files stored in object storage with private ACL policies
 - Graceful degradation: summaries created even if audio generation fails
-- Available on both Summaries page and Material Detail page under AI Tools
+- Available on Summaries page, Material Detail page (under AI Tools), and dedicated Audio Library page
+- Audio Library: Centralized page showing all generated audio summaries with playback controls
 
 **Error Handling**
 - Centralized error handling with try-catch blocks
