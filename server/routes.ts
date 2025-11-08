@@ -6,6 +6,7 @@ import multer from "multer";
 import { GoogleGenAI } from "@google/genai";
 import { generateAudioFromText } from "./deepgram";
 import { objectStorage } from "./objectStorage";
+import { setObjectAclPolicy } from "./objectAcl";
 import {
   insertStudyMaterialSchema,
   insertFlashcardSchema,
@@ -464,6 +465,14 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         // Upload audio to object storage
         const audioFileName = `summaries/audio_${materialId}_${Date.now()}.mp3`;
         await objectStorage.uploadFile(audioFileName, audioBuffer, "audio/mpeg");
+        
+        // Set ACL policy so user can access the audio
+        const audioFile = await objectStorage.getObjectEntityFile(`/objects/${audioFileName}`);
+        await setObjectAclPolicy(audioFile, {
+          owner: userId,
+          visibility: "private"
+        });
+        
         audioUrl = `/objects/${audioFileName}`;
         console.log("Audio summary generated and uploaded:", audioUrl);
       } catch (audioError) {
