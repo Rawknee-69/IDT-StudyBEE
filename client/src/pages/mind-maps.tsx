@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Network, Loader2 } from "lucide-react";
+import { Sparkles, Network, Loader2, Eye } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -16,11 +16,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { MindMapCanvas } from "@/components/MindMapCanvas";
 
 interface MindMapNode {
   id: string;
-  label: string;
-  children: MindMapNode[];
+  title: string;
+  children?: MindMapNode[];
 }
 
 export default function MindMaps() {
@@ -28,6 +29,7 @@ export default function MindMaps() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const [selectedMaterial, setSelectedMaterial] = useState<string | null>(null);
+  const [viewingMindMap, setViewingMindMap] = useState<MindMap | null>(null);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -108,25 +110,12 @@ export default function MindMaps() {
     generateMutation.mutate();
   };
 
-  const renderMindMapNode = (node: MindMapNode, level: number = 0): JSX.Element => {
-    const indent = level * 24;
-    const bgColor = level === 0 ? "bg-primary/10" : level === 1 ? "bg-secondary" : "bg-muted";
-    
-    return (
-      <div key={node.id} className="mb-2">
-        <div
-          className={`${bgColor} p-3 rounded-md border`}
-          style={{ marginLeft: `${indent}px` }}
-        >
-          <p className="font-medium">{node.label}</p>
-        </div>
-        {node.children && node.children.length > 0 && (
-          <div className="mt-2">
-            {node.children.map((child) => renderMindMapNode(child, level + 1))}
-          </div>
-        )}
-      </div>
-    );
+  const handleViewMindMap = (mindMap: MindMap) => {
+    setViewingMindMap(mindMap);
+  };
+
+  const handleCloseMindMap = () => {
+    setViewingMindMap(null);
   };
 
   if (authLoading) {
@@ -213,10 +202,23 @@ export default function MindMaps() {
               <div className="space-y-2">
                 {mindMaps.map((mindMap) => (
                   <Card key={mindMap.id} className="p-4" data-testid={`card-mind-map-${mindMap.id}`}>
-                    <h3 className="font-semibold mb-2">{mindMap.title}</h3>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Created: {new Date(mindMap.createdAt).toLocaleDateString()}
-                    </p>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <h3 className="font-semibold mb-2">{mindMap.title}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Created: {new Date(mindMap.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleViewMindMap(mindMap)}
+                        data-testid={`button-view-mind-map-${mindMap.id}`}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        View
+                      </Button>
+                    </div>
                   </Card>
                 ))}
               </div>
@@ -233,19 +235,26 @@ export default function MindMaps() {
         </Card>
       </div>
 
-      {selectedMaterial && mindMaps && mindMaps.length > 0 && (
+      {viewingMindMap && (
         <div className="mt-8">
-          <h2 className="font-heading font-semibold text-2xl mb-4">Mind Map View</h2>
-          {mindMaps
-            .filter((m) => m.materialId === selectedMaterial)
-            .map((mindMap) => (
-              <Card key={mindMap.id} className="p-6 mb-4" data-testid={`card-mind-map-view-${mindMap.id}`}>
-                <h3 className="font-heading font-semibold text-xl mb-4">{mindMap.title}</h3>
-                <div className="space-y-2">
-                  {renderMindMapNode(mindMap.content as MindMapNode)}
-                </div>
-              </Card>
-            ))}
+          <Card className="p-6" data-testid={`card-mind-map-canvas-${viewingMindMap.id}`}>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="font-heading font-semibold text-2xl">{viewingMindMap.title}</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Interactive mind map - Click arrows to collapse/expand nodes
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={handleCloseMindMap}
+                data-testid="button-close-mind-map"
+              >
+                Close
+              </Button>
+            </div>
+            <MindMapCanvas data={{ nodes: viewingMindMap.content as MindMapNode }} />
+          </Card>
         </div>
       )}
     </div>
