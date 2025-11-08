@@ -107,6 +107,9 @@ export const studySessions = pgTable("study_sessions", {
   tabSwitches: integer("tab_switches").notNull().default(0),
   timeWasted: integer("time_wasted").notNull().default(0), // in minutes
   isConcentrationMode: boolean("is_concentration_mode").notNull().default(false),
+  pauseCount: integer("pause_count").notNull().default(0), // number of times paused
+  pauseDuration: integer("pause_duration").notNull().default(0), // total pause time in seconds
+  pauseReasons: jsonb("pause_reasons").default(sql`'[]'::jsonb`), // Array of {reason, duration, timestamp}
 });
 
 // Todo list items

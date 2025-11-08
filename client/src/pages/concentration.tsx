@@ -5,8 +5,18 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Square, Focus, AlertTriangle, Clock } from "lucide-react";
+import { Play, Pause, Square, Focus, AlertTriangle, Clock, Coffee } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 type StudySession = {
   id: string;
@@ -17,17 +27,37 @@ type StudySession = {
   tabSwitches: number;
   timeWasted: number;
   isConcentrationMode: boolean;
+  pauseCount: number;
+  pauseDuration: number;
+  pauseReasons: Array<{ reason: string; duration: number; timestamp: string }>;
 };
+
+const PAUSE_REASONS = [
+  "Bathroom break",
+  "Quick snack/water",
+  "Emergency call",
+  "Stretching/rest",
+  "Technical issue",
+];
 
 export default function Concentration() {
   const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
   
   const [isActive, setIsActive] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [tabSwitches, setTabSwitches] = useState(0);
   const [timeWasted, setTimeWasted] = useState(0);
+  const [pauseDuration, setPauseDuration] = useState(0);
+  const [pauseCount, setPauseCount] = useState(0);
+  const [pauseReasons, setPauseReasons] = useState<Array<{ reason: string; duration: number; timestamp: string }>>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  
+  const [showPauseDialog, setShowPauseDialog] = useState(false);
+  const [selectedPauseReason, setSelectedPauseReason] = useState("");
+  const [customPauseReason, setCustomPauseReason] = useState("");
+  const [pauseStartTime, setPauseStartTime] = useState<number | null>(null);
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const beepIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -37,6 +67,8 @@ export default function Concentration() {
   const elapsedTimeRef = useRef(0);
   const tabSwitchesRef = useRef(0);
   const timeWastedRef = useRef(0);
+  const isPausedRef = useRef(false);
+  const visibilityHandlerRef = useRef<(() => void) | null>(null);
 
   const { data: sessions } = useQuery<StudySession[]>({
     queryKey: ["/api/study-sessions"],
@@ -50,6 +82,9 @@ export default function Concentration() {
         tabSwitches: 0,
         timeWasted: 0,
         isConcentrationMode: true,
+        pauseCount: 0,
+        pauseDuration: 0,
+        pauseReasons: [],
       });
     },
     onSuccess: (data: any) => {
@@ -67,11 +102,22 @@ export default function Concentration() {
   });
 
   const updateSessionMutation = useMutation({
-    mutationFn: async (data: { sessionId: string; duration: number; tabSwitches: number; timeWasted: number }) => {
+    mutationFn: async (data: { 
+      sessionId: string; 
+      duration: number; 
+      tabSwitches: number; 
+      timeWasted: number;
+      pauseCount: number;
+      pauseDuration: number;
+      pauseReasons: Array<{ reason: string; duration: number; timestamp: string }>;
+    }) => {
       return await apiRequest("PATCH", `/api/study-sessions/${data.sessionId}`, {
         duration: data.duration,
         tabSwitches: data.tabSwitches,
         timeWasted: data.timeWasted,
+        pauseCount: data.pauseCount,
+        pauseDuration: data.pauseDuration,
+        pauseReasons: data.pauseReasons,
       });
     },
     onSuccess: () => {
@@ -92,6 +138,9 @@ export default function Concentration() {
         duration: Math.floor(elapsedTime / 60),
         tabSwitches,
         timeWasted: Math.floor(timeWasted / 60),
+        pauseCount,
+        pauseDuration, // Send in seconds as per schema
+        pauseReasons,
       });
     },
     onSuccess: () => {
@@ -99,7 +148,7 @@ export default function Concentration() {
       const focusedTime = Math.floor((elapsedTime - timeWasted) / 60);
       toast({
         title: "Session Complete!",
-        description: `Focused for ${focusedTime} minutes with ${tabSwitches} interruptions.`,
+        description: `Focused for ${focusedTime} minutes with ${tabSwitches} interruptions and ${pauseCount} breaks.`,
       });
     },
     onError: (error: Error) => {
@@ -140,10 +189,17 @@ export default function Concentration() {
   }, [elapsedTime, tabSwitches, timeWasted]);
 
   useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
+
+  useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (beepIntervalRef.current) clearInterval(beepIntervalRef.current);
       if (autoSaveIntervalRef.current) clearInterval(autoSaveIntervalRef.current);
+      if (visibilityHandlerRef.current) {
+        document.removeEventListener("visibilitychange", visibilityHandlerRef.current);
+      }
     };
   }, []);
 
@@ -166,29 +222,37 @@ export default function Concentration() {
         duration: Math.floor(elapsedTimeRef.current / 60),
         tabSwitches: tabSwitchesRef.current,
         timeWasted: Math.floor(timeWastedRef.current / 60),
+        pauseCount,
+        pauseDuration, // Send in seconds as per schema
+        pauseReasons,
       });
     }, 30 * 1000);
 
+    // Only track tab switches when timer is RUNNING (not paused)
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        tabLeftTimeRef.current = Date.now();
-      } else {
-        if (tabLeftTimeRef.current) {
-          const wastedSeconds = Math.floor((Date.now() - tabLeftTimeRef.current) / 1000);
-          setTimeWasted((prev) => prev + wastedSeconds);
-          setTabSwitches((prev) => prev + 1);
-          
-          toast({
-            title: "Tab Switch Detected",
-            description: `Lost focus for ${wastedSeconds} seconds. Stay concentrated!`,
-            variant: "destructive",
-          });
-          
-          tabLeftTimeRef.current = null;
+      // Only track if session is active AND not paused (using ref to get current value)
+      if (!isPausedRef.current) {
+        if (document.hidden) {
+          tabLeftTimeRef.current = Date.now();
+        } else {
+          if (tabLeftTimeRef.current) {
+            const wastedSeconds = Math.floor((Date.now() - tabLeftTimeRef.current) / 1000);
+            setTimeWasted((prev) => prev + wastedSeconds);
+            setTabSwitches((prev) => prev + 1);
+            
+            toast({
+              title: "Tab Switch Detected",
+              description: `Lost focus for ${wastedSeconds} seconds. Stay concentrated!`,
+              variant: "destructive",
+            });
+            
+            tabLeftTimeRef.current = null;
+          }
         }
       }
     };
 
+    visibilityHandlerRef.current = handleVisibilityChange;
     document.addEventListener("visibilitychange", handleVisibilityChange);
   };
 
@@ -196,18 +260,57 @@ export default function Concentration() {
     if (timerRef.current) clearInterval(timerRef.current);
     if (beepIntervalRef.current) clearInterval(beepIntervalRef.current);
     if (autoSaveIntervalRef.current) clearInterval(autoSaveIntervalRef.current);
-    document.removeEventListener("visibilitychange", () => {});
+    if (visibilityHandlerRef.current) {
+      document.removeEventListener("visibilitychange", visibilityHandlerRef.current);
+      visibilityHandlerRef.current = null;
+    }
+  };
+
+  const pauseTimers = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (beepIntervalRef.current) clearInterval(beepIntervalRef.current);
+    if (autoSaveIntervalRef.current) clearInterval(autoSaveIntervalRef.current);
+  };
+
+  const resumeTimers = (sessionId: string) => {
+    timerRef.current = setInterval(() => {
+      setElapsedTime((prev) => prev + 1);
+    }, 1000);
+
+    beepIntervalRef.current = setInterval(() => {
+      playBeep();
+      toast({
+        title: "5 Minutes Passed",
+        description: "Keep focusing!",
+      });
+    }, 5 * 60 * 1000);
+
+    autoSaveIntervalRef.current = setInterval(() => {
+      updateSessionMutation.mutate({
+        sessionId,
+        duration: Math.floor(elapsedTimeRef.current / 60),
+        tabSwitches: tabSwitchesRef.current,
+        timeWasted: Math.floor(timeWastedRef.current / 60),
+        pauseCount,
+        pauseDuration, // Send in seconds as per schema
+        pauseReasons,
+      });
+    }, 30 * 1000);
   };
 
   const handleStart = async () => {
     setElapsedTime(0);
     setTabSwitches(0);
     setTimeWasted(0);
+    setPauseDuration(0);
+    setPauseCount(0);
+    setPauseReasons([]);
     
     try {
       const data: any = await startSessionMutation.mutateAsync();
       setCurrentSessionId(data.id);
       setIsActive(true);
+      setIsPaused(false);
       
       startTimers(data.id);
       
@@ -220,9 +323,47 @@ export default function Concentration() {
     }
   };
 
+  const handlePause = () => {
+    setShowPauseDialog(true);
+    setPauseStartTime(Date.now());
+    setIsPaused(true);
+    pauseTimers();
+  };
+
+  const handleResume = () => {
+    if (pauseStartTime && currentSessionId) {
+      const breakSeconds = Math.floor((Date.now() - pauseStartTime) / 1000);
+      const reason = selectedPauseReason === "Other" ? customPauseReason : selectedPauseReason;
+      
+      const newPauseEntry = {
+        reason: reason || "No reason specified",
+        duration: breakSeconds,
+        timestamp: new Date().toISOString(),
+      };
+      
+      setPauseDuration((prev) => prev + breakSeconds);
+      setPauseCount((prev) => prev + 1);
+      setPauseReasons((prev) => [...prev, newPauseEntry]);
+      
+      setIsPaused(false);
+      setShowPauseDialog(false);
+      setSelectedPauseReason("");
+      setCustomPauseReason("");
+      setPauseStartTime(null);
+      
+      resumeTimers(currentSessionId);
+      
+      toast({
+        title: "Break Ended",
+        description: `Break duration: ${Math.floor(breakSeconds / 60)}m ${breakSeconds % 60}s`,
+      });
+    }
+  };
+
   const handleStop = () => {
     stopTimers();
     setIsActive(false);
+    setIsPaused(false);
     
     if (currentSessionId) {
       endSessionMutation.mutate(currentSessionId);
@@ -232,6 +373,9 @@ export default function Concentration() {
     setElapsedTime(0);
     setTabSwitches(0);
     setTimeWasted(0);
+    setPauseDuration(0);
+    setPauseCount(0);
+    setPauseReasons([]);
   };
 
   const formatTime = (seconds: number) => {
@@ -253,7 +397,11 @@ export default function Concentration() {
     ?.filter((s) => s.isConcentrationMode)
     .reduce((total, session) => total + session.tabSwitches, 0) || 0;
 
-  const focusedTime = elapsedTime - timeWasted;
+  const totalPauses = sessions
+    ?.filter((s) => s.isConcentrationMode)
+    .reduce((total, session) => total + (session.pauseCount || 0), 0) || 0;
+
+  const focusedTime = elapsedTime - timeWasted - pauseDuration;
   const focusPercentage = elapsedTime > 0 ? Math.floor((focusedTime / elapsedTime) * 100) : 100;
 
   if (!user) {
@@ -275,7 +423,12 @@ export default function Concentration() {
         <div className="md:col-span-2">
           <Card className="p-8">
             <div className="text-center mb-8">
-              {isActive ? (
+              {isPaused ? (
+                <Badge variant="secondary" className="mb-4">
+                  <Coffee className="h-4 w-4 mr-2" />
+                  On Break
+                </Badge>
+              ) : isActive ? (
                 <Badge variant="default" className="mb-4">
                   <Focus className="h-4 w-4 mr-2" />
                   Concentrating
@@ -306,15 +459,37 @@ export default function Concentration() {
                     Start Concentrating
                   </Button>
                 ) : (
-                  <Button
-                    size="lg"
-                    onClick={handleStop}
-                    variant="destructive"
-                    data-testid="button-end-session"
-                  >
-                    <Square className="h-5 w-5 mr-2" />
-                    End Session
-                  </Button>
+                  <>
+                    {!isPaused ? (
+                      <Button
+                        size="lg"
+                        onClick={handlePause}
+                        variant="secondary"
+                        data-testid="button-pause-session"
+                      >
+                        <Pause className="h-5 w-5 mr-2" />
+                        Pause
+                      </Button>
+                    ) : (
+                      <Button
+                        size="lg"
+                        onClick={handleResume}
+                        data-testid="button-resume-session"
+                      >
+                        <Play className="h-5 w-5 mr-2" />
+                        Resume
+                      </Button>
+                    )}
+                    <Button
+                      size="lg"
+                      onClick={handleStop}
+                      variant="destructive"
+                      data-testid="button-stop-session"
+                    >
+                      <Square className="h-5 w-5 mr-2" />
+                      Stop
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -332,7 +507,35 @@ export default function Concentration() {
                 </div>
                 <div className="text-sm text-muted-foreground">Time Wasted</div>
               </div>
+              <div className="text-center p-4 bg-muted rounded-md">
+                <div className="text-2xl font-bold mb-1" data-testid="text-pause-count">
+                  {pauseCount}
+                </div>
+                <div className="text-sm text-muted-foreground">Breaks Taken</div>
+              </div>
+              <div className="text-center p-4 bg-muted rounded-md">
+                <div className="text-2xl font-bold mb-1" data-testid="text-pause-duration">
+                  {Math.floor(pauseDuration / 60)}m {pauseDuration % 60}s
+                </div>
+                <div className="text-sm text-muted-foreground">Break Time</div>
+              </div>
             </div>
+
+            {pauseReasons.length > 0 && (
+              <div className="mt-6 border-t pt-6">
+                <h3 className="font-semibold mb-3">Break History</h3>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {pauseReasons.map((pause, index) => (
+                    <div key={index} className="flex justify-between items-center text-sm p-2 bg-muted rounded">
+                      <span className="text-muted-foreground">{pause.reason}</span>
+                      <span className="font-medium">
+                        {Math.floor(pause.duration / 60)}m {pause.duration % 60}s
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </Card>
         </div>
 
@@ -358,6 +561,12 @@ export default function Concentration() {
                   {totalTabSwitches}
                 </div>
               </div>
+              <div>
+                <div className="text-sm text-muted-foreground mb-1">Total Breaks</div>
+                <div className="text-2xl font-bold" data-testid="text-total-pauses">
+                  {totalPauses}
+                </div>
+              </div>
             </div>
           </Card>
 
@@ -368,13 +577,72 @@ export default function Concentration() {
             </div>
             <ul className="text-sm text-muted-foreground space-y-2 list-disc list-inside">
               <li>Beep alert every 5 minutes</li>
-              <li>Tab switches are tracked</li>
-              <li>Time away is recorded as wasted</li>
+              <li>Tab switches tracked when running</li>
+              <li>Pause anytime for breaks</li>
+              <li>Track all break reasons</li>
               <li>Build streaks with 30+ min focus</li>
             </ul>
           </Card>
         </div>
       </div>
+
+      <Dialog open={showPauseDialog} onOpenChange={setShowPauseDialog}>
+        <DialogContent data-testid="dialog-pause-reason">
+          <DialogHeader>
+            <DialogTitle>Break Time</DialogTitle>
+            <DialogDescription>
+              Why are you taking a break? This helps track your study patterns.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <RadioGroup value={selectedPauseReason} onValueChange={setSelectedPauseReason}>
+              {PAUSE_REASONS.map((reason) => (
+                <div key={reason} className="flex items-center space-x-2">
+                  <RadioGroupItem value={reason} id={reason} data-testid={`radio-${reason.toLowerCase().replace(/\s+/g, '-')}`} />
+                  <Label htmlFor={reason} className="cursor-pointer">{reason}</Label>
+                </div>
+              ))}
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="Other" id="Other" data-testid="radio-other" />
+                <Label htmlFor="Other" className="cursor-pointer">Other (specify below)</Label>
+              </div>
+            </RadioGroup>
+
+            {selectedPauseReason === "Other" && (
+              <Input
+                placeholder="Enter custom reason..."
+                value={customPauseReason}
+                onChange={(e) => setCustomPauseReason(e.target.value)}
+                data-testid="input-custom-reason"
+              />
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowPauseDialog(false);
+                setIsPaused(false);
+                if (currentSessionId) {
+                  resumeTimers(currentSessionId);
+                }
+              }}
+              data-testid="button-cancel-pause"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleResume}
+              disabled={!selectedPauseReason || (selectedPauseReason === "Other" && !customPauseReason)}
+              data-testid="button-confirm-pause"
+            >
+              End Break
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
