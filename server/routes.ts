@@ -20,6 +20,10 @@ import {
   insertPomodoroSessionSchema,
   insertChatMessageSchema,
   updateUserProfileSchema,
+  insertCollabSessionSchema,
+  insertCollabParticipantSchema,
+  insertCollabWhiteboardSchema,
+  insertCollabActivitySchema,
 } from "@shared/schema";
 
 // Initialize Gemini AI
@@ -852,6 +856,182 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     } catch (error) {
       console.error("Error fetching quiz score leaderboard:", error);
       res.status(500).json({ message: "Failed to fetch quiz score leaderboard" });
+    }
+  });
+
+  // Collaboration Session routes
+  app.post("/api/collab/sessions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const sessionCode = Math.random().toString(36).substring(2, 12).toUpperCase();
+      const sessionData = insertCollabSessionSchema.parse({
+        ...req.body,
+        hostUserId: userId,
+        sessionCode,
+      });
+      const session = await storage.createCollabSession(sessionData);
+      
+      // Create whiteboard for session
+      await storage.createCollabWhiteboard({
+        sessionId: session.id,
+        content: { elements: [] },
+      });
+      
+      // Add host as participant
+      await storage.createCollabParticipant({
+        sessionId: session.id,
+        userId,
+        role: "host",
+      });
+      
+      res.json(session);
+    } catch (error: any) {
+      console.error("Error creating collab session:", error);
+      res.status(400).json({ message: error.message || "Failed to create collab session" });
+    }
+  });
+
+  app.get("/api/collab/sessions/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const session = await storage.getCollabSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+      res.json(session);
+    } catch (error) {
+      console.error("Error fetching collab session:", error);
+      res.status(500).json({ message: "Failed to fetch collab session" });
+    }
+  });
+
+  app.get("/api/collab/sessions/code/:code", isAuthenticated, async (req: any, res) => {
+    try {
+      const session = await storage.getCollabSessionByCode(req.params.code);
+      if (!session) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+      res.json(session);
+    } catch (error) {
+      console.error("Error fetching collab session by code:", error);
+      res.status(500).json({ message: "Failed to fetch collab session" });
+    }
+  });
+
+  app.get("/api/collab/my-sessions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const sessions = await storage.getCollabSessionsByHost(userId);
+      res.json(sessions);
+    } catch (error) {
+      console.error("Error fetching user's collab sessions:", error);
+      res.status(500).json({ message: "Failed to fetch collab sessions" });
+    }
+  });
+
+  app.post("/api/collab/sessions/:id/end", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const session = await storage.getCollabSession(req.params.id);
+      
+      if (!session) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+      
+      if (session.hostUserId !== userId) {
+        return res.status(403).json({ message: "Only the host can end the session" });
+      }
+      
+      const endedSession = await storage.endCollabSession(req.params.id);
+      res.json(endedSession);
+    } catch (error) {
+      console.error("Error ending collab session:", error);
+      res.status(500).json({ message: "Failed to end collab session" });
+    }
+  });
+
+  // Collaboration Participant routes
+  app.post("/api/collab/sessions/:id/join", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const sessionId = req.params.id;
+      
+      const session = await storage.getCollabSession(sessionId);
+      if (!session || !session.isActive) {
+        return res.status(404).json({ message: "Session not found or inactive" });
+      }
+      
+      // Check if already a participant
+      const existing = await storage.getCollabParticipantByUserAndSession(userId, sessionId);
+      if (existing) {
+        return res.json(existing);
+      }
+      
+      const participantData = insertCollabParticipantSchema.parse({
+        sessionId,
+        userId,
+        role: "member",
+      });
+      
+      const participant = await storage.createCollabParticipant(participantData);
+      res.json(participant);
+    } catch (error: any) {
+      console.error("Error joining collab session:", error);
+      res.status(400).json({ message: error.message || "Failed to join collab session" });
+    }
+  });
+
+  app.get("/api/collab/sessions/:id/participants", isAuthenticated, async (req: any, res) => {
+    try {
+      const participants = await storage.getActiveCollabParticipantsBySession(req.params.id);
+      
+      // Fetch user details for each participant
+      const participantsWithUsers = await Promise.all(
+        participants.map(async (p) => {
+          const user = await storage.getUser(p.userId);
+          return { ...p, user };
+        })
+      );
+      
+      res.json(participantsWithUsers);
+    } catch (error) {
+      console.error("Error fetching participants:", error);
+      res.status(500).json({ message: "Failed to fetch participants" });
+    }
+  });
+
+  // Collaboration Whiteboard routes
+  app.get("/api/collab/sessions/:id/whiteboard", isAuthenticated, async (req: any, res) => {
+    try {
+      const whiteboard = await storage.getCollabWhiteboardBySession(req.params.id);
+      if (!whiteboard) {
+        return res.status(404).json({ message: "Whiteboard not found" });
+      }
+      res.json(whiteboard);
+    } catch (error) {
+      console.error("Error fetching whiteboard:", error);
+      res.status(500).json({ message: "Failed to fetch whiteboard" });
+    }
+  });
+
+  app.patch("/api/collab/whiteboards/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const updates = { content: req.body.content };
+      const whiteboard = await storage.updateCollabWhiteboard(req.params.id, updates);
+      res.json(whiteboard);
+    } catch (error) {
+      console.error("Error updating whiteboard:", error);
+      res.status(500).json({ message: "Failed to update whiteboard" });
+    }
+  });
+
+  // Collaboration Activity routes
+  app.get("/api/collab/sessions/:id/activities", isAuthenticated, async (req: any, res) => {
+    try {
+      const activities = await storage.getCollabActivitiesBySession(req.params.id);
+      res.json(activities);
+    } catch (error) {
+      console.error("Error fetching activities:", error);
+      res.status(500).json({ message: "Failed to fetch activities" });
     }
   });
 
