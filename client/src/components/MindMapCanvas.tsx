@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 
 interface MindMapNode {
   id: string;
-  title: string;
+  label: string;
   children?: MindMapNode[];
 }
 
@@ -39,32 +39,40 @@ interface CollapsibleNodeData {
   onToggleCollapse: () => void;
 }
 
-const nodeWidth = 220;
+const calculateNodeWidth = (label: string): number => {
+  const minWidth = 180;
+  const maxWidth = 400;
+  const charWidth = 8;
+  const padding = 60;
+  const calculatedWidth = label.length * charWidth + padding;
+  return Math.min(Math.max(calculatedWidth, minWidth), maxWidth);
+};
+
 const nodeHeight = 60;
 
 const CollapsibleNode = ({ data }: NodeProps<CollapsibleNodeData>) => {
   return (
     <div className="relative">
-      <Handle type="target" position={Position.Left} className="!bg-primary" />
-      <div className="flex items-center gap-2 px-4 py-3 bg-card border border-border rounded-md min-w-[220px] hover-elevate">
+      <Handle type="target" position={Position.Left} className="!bg-primary !w-2 !h-2" />
+      <div className="flex items-center gap-2 px-4 py-3 bg-card dark:bg-card border-2 border-border dark:border-border rounded-lg shadow-sm hover-elevate max-w-[400px]">
         {data.hasChildren && (
           <button
             onClick={data.onToggleCollapse}
-            className="flex-shrink-0 w-5 h-5 flex items-center justify-center hover:bg-accent rounded data-testid-collapse-button"
+            className="flex-shrink-0 w-6 h-6 flex items-center justify-center hover:bg-accent dark:hover:bg-accent rounded-md transition-colors"
             data-testid="button-collapse-toggle"
           >
             {data.isCollapsed ? (
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              <ChevronRight className="h-4 w-4 text-foreground dark:text-foreground" />
             ) : (
-              <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+              <ChevronLeft className="h-4 w-4 text-foreground dark:text-foreground" />
             )}
           </button>
         )}
-        <span className="text-sm font-medium flex-1 text-foreground">
+        <span className="text-sm font-medium text-foreground dark:text-foreground leading-tight">
           {data.label}
         </span>
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-primary" />
+      <Handle type="source" position={Position.Right} className="!bg-primary !w-2 !h-2" />
     </div>
   );
 };
@@ -79,12 +87,13 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
   dagreGraph.setGraph({ 
     rankdir: 'LR',
     nodesep: 80,
-    ranksep: 150,
+    ranksep: 180,
     edgesep: 50,
   });
 
   nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+    const width = node.width || calculateNodeWidth((node.data as CollapsibleNodeData).label);
+    dagreGraph.setNode(node.id, { width, height: nodeHeight });
   });
 
   edges.forEach((edge) => {
@@ -95,11 +104,15 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
 
   const layoutedNodes = nodes.map((node) => {
     const nodeWithPosition = dagreGraph.node(node.id);
+    const width = node.width || calculateNodeWidth((node.data as CollapsibleNodeData).label);
     return {
       ...node,
       position: {
-        x: nodeWithPosition.x - nodeWidth / 2,
+        x: nodeWithPosition.x - width / 2,
         y: nodeWithPosition.y - nodeHeight / 2,
+      },
+      style: {
+        width: `${width}px`,
       },
     };
   });
@@ -120,17 +133,19 @@ const transformToReactFlow = (
     const nodeId = node.id;
     const isCollapsed = collapsedNodes.has(nodeId);
     const hasChildren = node.children && node.children.length > 0;
+    const nodeLabel = node.label || '';
 
     nodes.push({
       id: nodeId,
       type: 'collapsible',
       data: {
-        label: node.title,
+        label: nodeLabel,
         hasChildren: !!hasChildren,
         isCollapsed,
         onToggleCollapse: () => onToggleCollapse(nodeId),
       },
       position: { x: 0, y: 0 },
+      width: calculateNodeWidth(nodeLabel),
     });
 
     if (parent) {
@@ -139,7 +154,10 @@ const transformToReactFlow = (
         source: parent,
         target: nodeId,
         type: 'smoothstep',
-        style: { stroke: 'hsl(var(--border))', strokeWidth: 2 },
+        style: { 
+          stroke: 'hsl(var(--border))',
+          strokeWidth: 2,
+        },
         animated: false,
       });
     }
@@ -211,7 +229,7 @@ function MindMapCanvasInner({ data }: MindMapCanvasProps) {
   }, [data]);
 
   return (
-    <div className="relative w-full h-[600px] bg-background border border-border rounded-lg overflow-hidden">
+    <div className="relative w-full h-[600px] bg-background dark:bg-background border border-border dark:border-border rounded-lg overflow-hidden">
       <div className="absolute top-4 left-4 z-10 flex gap-2">
         <Button
           size="sm"
@@ -253,8 +271,14 @@ function MindMapCanvasInner({ data }: MindMapCanvasProps) {
         }}
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} className="bg-background" />
-        <Controls className="bg-card border border-border" />
+        <Background 
+          variant={BackgroundVariant.Dots} 
+          gap={16} 
+          size={1} 
+          className="bg-background dark:bg-background" 
+          color="hsl(var(--border))"
+        />
+        <Controls className="bg-card dark:bg-card border border-border dark:border-border" />
       </ReactFlow>
     </div>
   );

@@ -20,7 +20,7 @@ import { MindMapCanvas } from "@/components/MindMapCanvas";
 
 interface MindMapNode {
   id: string;
-  title: string;
+  label: string;
   children?: MindMapNode[];
 }
 
