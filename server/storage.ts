@@ -35,10 +35,10 @@ import type {
   InsertCollabActivity,
   CollabChatMessage,
   InsertCollabChatMessage,
-  CollabReaction,
-  InsertCollabReaction,
   CollabPresentation,
   InsertCollabPresentation,
+  CollabPresentationEditor,
+  InsertCollabPresentationEditor,
 } from "@shared/schema";
 import {
   users,
@@ -57,8 +57,8 @@ import {
   collabWhiteboards,
   collabActivities,
   collabChatMessages,
-  collabReactions,
   collabPresentations,
+  collabPresentationEditors,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -179,6 +179,24 @@ export interface IStorage {
   getCollabActivity(id: string): Promise<CollabActivity | undefined>;
   getCollabActivitiesBySession(sessionId: string): Promise<CollabActivity[]>;
   createCollabActivity(activity: InsertCollabActivity): Promise<CollabActivity>;
+
+  // Collaboration Chat Message operations
+  getCollabChatMessage(id: string): Promise<CollabChatMessage | undefined>;
+  getCollabChatMessagesBySession(sessionId: string): Promise<CollabChatMessage[]>;
+  createCollabChatMessage(message: InsertCollabChatMessage): Promise<CollabChatMessage>;
+
+  // Collaboration Presentation operations
+  getCollabPresentation(id: string): Promise<CollabPresentation | undefined>;
+  getCollabPresentationsBySession(sessionId: string): Promise<CollabPresentation[]>;
+  getActiveCollabPresentation(sessionId: string): Promise<CollabPresentation | undefined>;
+  createCollabPresentation(presentation: InsertCollabPresentation): Promise<CollabPresentation>;
+  updateCollabPresentation(id: string, updates: Partial<InsertCollabPresentation>): Promise<CollabPresentation | undefined>;
+  
+  // Collaboration Presentation Editor operations
+  getCollabPresentationEditors(presentationId: string): Promise<CollabPresentationEditor[]>;
+  hasCollabPresentationEditPermission(presentationId: string, userId: string): Promise<boolean>;
+  grantCollabPresentationEdit(editor: InsertCollabPresentationEditor): Promise<CollabPresentationEditor>;
+  revokeCollabPresentationEdit(presentationId: string, userId: string): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -603,8 +621,7 @@ export class DbStorage implements IStorage {
     return await db
       .select()
       .from(collabParticipants)
-      .where(eq(collabParticipants.sessionId, sessionId))
-      .where(sql`${collabParticipants.leftAt} IS NULL`)
+      .where(sql`${collabParticipants.sessionId} = ${sessionId} AND ${collabParticipants.leftAt} IS NULL`)
       .orderBy(collabParticipants.joinedAt);
   }
 
@@ -679,6 +696,88 @@ export class DbStorage implements IStorage {
   async createCollabActivity(activity: InsertCollabActivity): Promise<CollabActivity> {
     const result = await db.insert(collabActivities).values(activity).returning();
     return result[0];
+  }
+
+  // Collaboration Chat Message operations
+  async getCollabChatMessage(id: string): Promise<CollabChatMessage | undefined> {
+    const result = await db.select().from(collabChatMessages).where(eq(collabChatMessages.id, id));
+    return result[0];
+  }
+
+  async getCollabChatMessagesBySession(sessionId: string): Promise<CollabChatMessage[]> {
+    return await db
+      .select()
+      .from(collabChatMessages)
+      .where(eq(collabChatMessages.sessionId, sessionId))
+      .orderBy(collabChatMessages.createdAt);
+  }
+
+  async createCollabChatMessage(message: InsertCollabChatMessage): Promise<CollabChatMessage> {
+    const result = await db.insert(collabChatMessages).values(message).returning();
+    return result[0];
+  }
+
+  // Collaboration Presentation operations
+  async getCollabPresentation(id: string): Promise<CollabPresentation | undefined> {
+    const result = await db.select().from(collabPresentations).where(eq(collabPresentations.id, id));
+    return result[0];
+  }
+
+  async getCollabPresentationsBySession(sessionId: string): Promise<CollabPresentation[]> {
+    return await db
+      .select()
+      .from(collabPresentations)
+      .where(eq(collabPresentations.sessionId, sessionId))
+      .orderBy(collabPresentations.uploadedAt);
+  }
+
+  async getActiveCollabPresentation(sessionId: string): Promise<CollabPresentation | undefined> {
+    const result = await db
+      .select()
+      .from(collabPresentations)
+      .where(sql`${collabPresentations.sessionId} = ${sessionId} AND ${collabPresentations.isActive} = true`);
+    return result[0];
+  }
+
+  async createCollabPresentation(presentation: InsertCollabPresentation): Promise<CollabPresentation> {
+    const result = await db.insert(collabPresentations).values(presentation).returning();
+    return result[0];
+  }
+
+  async updateCollabPresentation(id: string, updates: Partial<InsertCollabPresentation>): Promise<CollabPresentation | undefined> {
+    const result = await db
+      .update(collabPresentations)
+      .set(updates)
+      .where(eq(collabPresentations.id, id))
+      .returning();
+    return result[0];
+  }
+
+  // Collaboration Presentation Editor operations
+  async getCollabPresentationEditors(presentationId: string): Promise<CollabPresentationEditor[]> {
+    return await db
+      .select()
+      .from(collabPresentationEditors)
+      .where(eq(collabPresentationEditors.presentationId, presentationId));
+  }
+
+  async hasCollabPresentationEditPermission(presentationId: string, userId: string): Promise<boolean> {
+    const result = await db
+      .select()
+      .from(collabPresentationEditors)
+      .where(sql`${collabPresentationEditors.presentationId} = ${presentationId} AND ${collabPresentationEditors.userId} = ${userId}`);
+    return result.length > 0;
+  }
+
+  async grantCollabPresentationEdit(editor: InsertCollabPresentationEditor): Promise<CollabPresentationEditor> {
+    const result = await db.insert(collabPresentationEditors).values(editor).returning();
+    return result[0];
+  }
+
+  async revokeCollabPresentationEdit(presentationId: string, userId: string): Promise<void> {
+    await db
+      .delete(collabPresentationEditors)
+      .where(sql`${collabPresentationEditors.presentationId} = ${presentationId} AND ${collabPresentationEditors.userId} = ${userId}`);
   }
 }
 

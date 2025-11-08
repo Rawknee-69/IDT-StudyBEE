@@ -639,30 +639,20 @@ async function handleReactionAdd(ws: WebSocket, msg: WSMessage, userId: string) 
     return;
   }
   
-  // Save reaction
-  const reaction = await storage.createCollabReaction({
-    sessionId,
-    userId,
-    emoji: data.emoji,
-    x: data.x,
-    y: data.y,
-  });
-  
   // Get user info
   const user = await storage.getUser(userId);
   
-  // Broadcast to all participants
+  // Broadcast ephemeral reaction to all participants (no DB storage)
   broadcast(sessionId, {
     type: "reaction_added",
     sessionId,
     data: {
-      id: reaction.id,
       userId,
       userName: user ? `${user.firstName} ${user.lastName}` : "Unknown",
       emoji: data.emoji,
       x: data.x,
       y: data.y,
-      createdAt: reaction.createdAt,
+      timestamp: new Date().toISOString(),
     },
   });
 }
@@ -684,13 +674,26 @@ async function handlePresentationUpload(ws: WebSocket, msg: WSMessage, userId: s
     fileName: data.fileName,
     fileUrl: data.fileUrl,
     fileType: data.fileType,
-    canEdit: data.canEdit || [],
     currentPage: 1,
     isActive: false,
   });
   
+  // Grant edit permissions if specified
+  if (data.canEdit && Array.isArray(data.canEdit)) {
+    for (const editorUserId of data.canEdit) {
+      await storage.grantCollabPresentationEdit({
+        presentationId: presentation.id,
+        userId: editorUserId,
+      });
+    }
+  }
+  
   // Get user info
   const user = await storage.getUser(userId);
+  
+  // Get editor list
+  const editors = await storage.getCollabPresentationEditors(presentation.id);
+  const editorUserIds = editors.map(e => e.userId);
   
   // Broadcast to all participants
   broadcast(sessionId, {
@@ -703,7 +706,7 @@ async function handlePresentationUpload(ws: WebSocket, msg: WSMessage, userId: s
       fileName: data.fileName,
       fileUrl: data.fileUrl,
       fileType: data.fileType,
-      canEdit: data.canEdit || [],
+      canEdit: editorUserIds,
       uploadedAt: presentation.uploadedAt,
     },
   });
@@ -728,9 +731,8 @@ async function handlePresentationControl(ws: WebSocket, msg: WSMessage, userId: 
   }
   
   // Check if user has edit permissions
-  const canEdit = presentation.canEdit as string[];
   const isUploader = presentation.uploadedBy === userId;
-  const hasEditPermission = isUploader || canEdit.includes(userId);
+  const hasEditPermission = isUploader || await storage.hasCollabPresentationEditPermission(presentationId, userId);
   
   // Get session to check if user is host
   const session = await storage.getCollabSession(sessionId);
@@ -756,10 +758,14 @@ async function handlePresentationControl(ws: WebSocket, msg: WSMessage, userId: 
       isActive: value,
     });
   } else if (action === "grantEdit") {
-    const newCanEdit = [...canEdit, value];
-    await storage.updateCollabPresentation(presentationId, {
-      canEdit: newCanEdit,
+    // Grant edit permission to a user
+    await storage.grantCollabPresentationEdit({
+      presentationId,
+      userId: value,
     });
+  } else if (action === "revokeEdit") {
+    // Revoke edit permission from a user
+    await storage.revokeCollabPresentationEdit(presentationId, value);
   }
   
   // Broadcast control change to all participants
