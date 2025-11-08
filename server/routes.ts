@@ -7,6 +7,7 @@ import { GoogleGenAI } from "@google/genai";
 import { generateAudioFromText } from "./deepgram";
 import { objectStorage } from "./objectStorage";
 import { setObjectAclPolicy } from "./objectAcl";
+import { sanitizeMarkdown, sanitizeUserInput } from "./textUtils";
 import {
   insertStudyMaterialSchema,
   insertFlashcardSchema,
@@ -222,7 +223,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Use Gemini to generate flashcards
       const prompt = `Generate ${count} flashcards from this study material titled "${material.title}". 
-      Return ONLY a JSON array with objects containing 'question' and 'answer' fields. No additional text.
+      Return ONLY a JSON array with objects containing 'question' and 'answer' fields. No additional text or markdown formatting.
+      Use plain text only - no asterisks, underscores, or markdown syntax.
       Example format: [{"question": "What is X?", "answer": "X is..."}, ...]`;
 
       const result = await genAI.models.generateContent({
@@ -239,14 +241,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const flashcardsData = JSON.parse(jsonMatch[0]);
 
-      // Save flashcards to database
+      // Save flashcards to database with sanitized content
       const createdFlashcards = [];
       for (const card of flashcardsData) {
         const flashcard = await storage.createFlashcard({
           userId,
           materialId,
-          question: card.question,
-          answer: card.answer,
+          question: sanitizeMarkdown(card.question || ""),
+          answer: sanitizeMarkdown(card.answer || ""),
           isAIGenerated: true,
         });
         createdFlashcards.push(flashcard);
@@ -327,7 +329,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Use Gemini to generate quiz
       const prompt = `Generate ${questionCount} multiple choice quiz questions from this study material titled "${material.title}". 
-      Return ONLY a JSON array with objects containing 'question', 'options' (array of 4 choices), and 'correctAnswer' (the correct option text). No additional text.
+      Return ONLY a JSON array with objects containing 'question', 'options' (array of 4 choices), and 'correctAnswer' (the correct option text). No additional text or markdown formatting.
+      Use plain text only - no asterisks, underscores, or markdown syntax.
       Example format: [{"question": "What is X?", "options": ["A", "B", "C", "D"], "correctAnswer": "A"}, ...]`;
 
       const result = await genAI.models.generateContent({
@@ -344,12 +347,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const questions = JSON.parse(jsonMatch[0]);
 
+      // Sanitize quiz questions and options
+      const sanitizedQuestions = questions.map((q: any) => ({
+        question: sanitizeMarkdown(q.question || ""),
+        options: (q.options || []).map((opt: string) => sanitizeMarkdown(opt)),
+        correctAnswer: sanitizeMarkdown(q.correctAnswer || ""),
+      }));
+
       // Save quiz to database
       const quiz = await storage.createQuiz({
         userId,
         materialId,
         title: `${material.title} Quiz`,
-        questions,
+        questions: sanitizedQuestions,
         isAIGenerated: true,
       });
 
@@ -450,7 +460,9 @@ Generate a comprehensive educational summary that:
 5. Includes practical applications of the concepts
 
 Make the explanation engaging and conversational, as if you're speaking directly to the student.
-Format the summary to be clear and well-organized with headings and bullet points.
+Format the summary to be clear and well-organized with headings and sections.
+
+IMPORTANT: Use plain text only. Do not use markdown formatting like asterisks, underscores, or special characters for emphasis.
 
 Your goal is to ensure that even the most difficult concepts become easy to understand through your explanations and examples.`;
 
@@ -458,7 +470,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
           model: "gemini-2.0-flash-exp",
           contents: prompt,
         });
-        content = result.text || "";
+        content = sanitizeMarkdown(result.text || "");
       }
 
       // Generate audio from the summary using Deepgram
@@ -600,12 +612,15 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       const userId = req.user.claims.sub;
       const { materialId, content } = req.body;
 
+      // Sanitize user input
+      const sanitizedContent = sanitizeUserInput(content);
+
       // Save user message
       const userMessage = await storage.createChatMessage({
         userId,
         materialId: materialId || null,
         role: "user",
-        content,
+        content: sanitizedContent,
       });
 
       // Get conversation history
@@ -614,23 +629,27 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         : [];
 
       // Generate AI response using Gemini
-      let prompt = content;
+      let prompt = sanitizedContent;
       if (materialId) {
         const material = await storage.getStudyMaterial(materialId);
         if (material) {
           prompt = `You are a helpful study assistant. The student is studying "${material.title}". 
           Previous conversation: ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join("\n")}
-          Student question: ${content}
+          Student question: ${sanitizedContent}
           
-          Provide a helpful, educational response.`;
+          Provide a helpful, educational response in plain text without any markdown formatting. Do not use asterisks, underscores, or other markdown syntax.`;
         }
+      } else {
+        prompt = `You are a helpful study assistant. Student question: ${sanitizedContent}
+        
+        Provide a helpful, educational response in plain text without any markdown formatting. Do not use asterisks, underscores, or other markdown syntax.`;
       }
 
       const result = await genAI.models.generateContent({
         model: "gemini-2.0-flash-exp",
         contents: prompt,
       });
-      const aiResponse = result.text || "";
+      const aiResponse = sanitizeMarkdown(result.text || "");
 
       // Save AI response
       const assistantMessage = await storage.createChatMessage({
