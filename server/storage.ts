@@ -525,6 +525,155 @@ export class DbStorage implements IStorage {
   async deleteChatMessagesByMaterial(materialId: string): Promise<void> {
     await db.delete(chatMessages).where(eq(chatMessages.materialId, materialId));
   }
+
+  // Collaboration Session operations
+  async getCollabSession(id: string): Promise<CollabSession | undefined> {
+    const result = await db.select().from(collabSessions).where(eq(collabSessions.id, id));
+    return result[0];
+  }
+
+  async getCollabSessionByCode(code: string): Promise<CollabSession | undefined> {
+    const result = await db.select().from(collabSessions).where(eq(collabSessions.sessionCode, code));
+    return result[0];
+  }
+
+  async getCollabSessionsByHost(hostUserId: string): Promise<CollabSession[]> {
+    return await db
+      .select()
+      .from(collabSessions)
+      .where(eq(collabSessions.hostUserId, hostUserId))
+      .orderBy(desc(collabSessions.createdAt));
+  }
+
+  async getActiveCollabSessionsByHost(hostUserId: string): Promise<CollabSession[]> {
+    return await db
+      .select()
+      .from(collabSessions)
+      .where(eq(collabSessions.hostUserId, hostUserId))
+      .where(eq(collabSessions.isActive, true))
+      .orderBy(desc(collabSessions.createdAt));
+  }
+
+  async createCollabSession(session: InsertCollabSession): Promise<CollabSession> {
+    const result = await db.insert(collabSessions).values(session).returning();
+    return result[0];
+  }
+
+  async updateCollabSession(id: string, updates: Partial<InsertCollabSession>): Promise<CollabSession | undefined> {
+    const result = await db
+      .update(collabSessions)
+      .set(updates)
+      .where(eq(collabSessions.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async endCollabSession(id: string): Promise<CollabSession | undefined> {
+    const result = await db
+      .update(collabSessions)
+      .set({ isActive: false, endedAt: new Date() })
+      .where(eq(collabSessions.id, id))
+      .returning();
+    return result[0];
+  }
+
+  // Collaboration Participant operations
+  async getCollabParticipant(id: string): Promise<CollabParticipant | undefined> {
+    const result = await db.select().from(collabParticipants).where(eq(collabParticipants.id, id));
+    return result[0];
+  }
+
+  async getCollabParticipantsBySession(sessionId: string): Promise<CollabParticipant[]> {
+    return await db
+      .select()
+      .from(collabParticipants)
+      .where(eq(collabParticipants.sessionId, sessionId))
+      .orderBy(collabParticipants.joinedAt);
+  }
+
+  async getActiveCollabParticipantsBySession(sessionId: string): Promise<CollabParticipant[]> {
+    return await db
+      .select()
+      .from(collabParticipants)
+      .where(eq(collabParticipants.sessionId, sessionId))
+      .where(sql`${collabParticipants.leftAt} IS NULL`)
+      .orderBy(collabParticipants.joinedAt);
+  }
+
+  async getCollabParticipantByUserAndSession(userId: string, sessionId: string): Promise<CollabParticipant | undefined> {
+    const result = await db
+      .select()
+      .from(collabParticipants)
+      .where(eq(collabParticipants.userId, userId))
+      .where(eq(collabParticipants.sessionId, sessionId))
+      .where(sql`${collabParticipants.leftAt} IS NULL`);
+    return result[0];
+  }
+
+  async createCollabParticipant(participant: InsertCollabParticipant): Promise<CollabParticipant> {
+    const result = await db.insert(collabParticipants).values(participant).returning();
+    return result[0];
+  }
+
+  async updateCollabParticipant(id: string, updates: Partial<InsertCollabParticipant>): Promise<CollabParticipant | undefined> {
+    const result = await db
+      .update(collabParticipants)
+      .set(updates)
+      .where(eq(collabParticipants.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async removeCollabParticipant(id: string): Promise<void> {
+    await db
+      .update(collabParticipants)
+      .set({ leftAt: new Date() })
+      .where(eq(collabParticipants.id, id));
+  }
+
+  // Collaboration Whiteboard operations
+  async getCollabWhiteboard(id: string): Promise<CollabWhiteboard | undefined> {
+    const result = await db.select().from(collabWhiteboards).where(eq(collabWhiteboards.id, id));
+    return result[0];
+  }
+
+  async getCollabWhiteboardBySession(sessionId: string): Promise<CollabWhiteboard | undefined> {
+    const result = await db.select().from(collabWhiteboards).where(eq(collabWhiteboards.sessionId, sessionId));
+    return result[0];
+  }
+
+  async createCollabWhiteboard(whiteboard: InsertCollabWhiteboard): Promise<CollabWhiteboard> {
+    const result = await db.insert(collabWhiteboards).values(whiteboard).returning();
+    return result[0];
+  }
+
+  async updateCollabWhiteboard(id: string, updates: Partial<InsertCollabWhiteboard>): Promise<CollabWhiteboard | undefined> {
+    const result = await db
+      .update(collabWhiteboards)
+      .set({ ...updates, lastSavedAt: new Date() })
+      .where(eq(collabWhiteboards.id, id))
+      .returning();
+    return result[0];
+  }
+
+  // Collaboration Activity operations
+  async getCollabActivity(id: string): Promise<CollabActivity | undefined> {
+    const result = await db.select().from(collabActivities).where(eq(collabActivities.id, id));
+    return result[0];
+  }
+
+  async getCollabActivitiesBySession(sessionId: string): Promise<CollabActivity[]> {
+    return await db
+      .select()
+      .from(collabActivities)
+      .where(eq(collabActivities.sessionId, sessionId))
+      .orderBy(collabActivities.createdAt);
+  }
+
+  async createCollabActivity(activity: InsertCollabActivity): Promise<CollabActivity> {
+    const result = await db.insert(collabActivities).values(activity).returning();
+    return result[0];
+  }
 }
 
 export const storage = new DbStorage();
