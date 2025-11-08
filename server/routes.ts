@@ -462,30 +462,12 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       }
 
       // Generate audio from the summary using Deepgram
+      // Text will be automatically chunked if it exceeds Deepgram's 2000 char limit
       let audioUrl: string | null = null;
       try {
         console.log("Generating audio summary with Deepgram...");
-        
-        // Deepgram has a 2000 character limit, so truncate if needed
-        const maxLength = 1900; // Leave some buffer
-        let audioText = content;
-        if (content.length > maxLength) {
-          // Truncate at sentence boundary if possible
-          audioText = content.substring(0, maxLength);
-          const lastPeriod = audioText.lastIndexOf('.');
-          const lastExclamation = audioText.lastIndexOf('!');
-          const lastQuestion = audioText.lastIndexOf('?');
-          const lastSentenceEnd = Math.max(lastPeriod, lastExclamation, lastQuestion);
-          
-          if (lastSentenceEnd > maxLength * 0.8) { // Only use if we don't lose too much
-            audioText = audioText.substring(0, lastSentenceEnd + 1);
-          }
-          
-          console.log(`Summary truncated for audio: ${content.length} -> ${audioText.length} chars`);
-        }
-        
         const audioBuffer = await generateAudioFromText({ 
-          text: audioText,
+          text: content,
           model: "aura-asteria-en" // Natural, clear voice for educational content
         });
 
