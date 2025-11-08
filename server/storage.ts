@@ -549,8 +549,7 @@ export class DbStorage implements IStorage {
     return await db
       .select()
       .from(collabSessions)
-      .where(eq(collabSessions.hostUserId, hostUserId))
-      .where(eq(collabSessions.isActive, true))
+      .where(sql`${collabSessions.hostUserId} = ${hostUserId} AND ${collabSessions.isActive} = true`)
       .orderBy(desc(collabSessions.createdAt));
   }
 
@@ -604,9 +603,7 @@ export class DbStorage implements IStorage {
     const result = await db
       .select()
       .from(collabParticipants)
-      .where(eq(collabParticipants.userId, userId))
-      .where(eq(collabParticipants.sessionId, sessionId))
-      .where(sql`${collabParticipants.leftAt} IS NULL`);
+      .where(sql`${collabParticipants.userId} = ${userId} AND ${collabParticipants.sessionId} = ${sessionId} AND ${collabParticipants.leftAt} IS NULL`);
     return result[0];
   }
 
