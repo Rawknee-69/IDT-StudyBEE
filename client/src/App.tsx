@@ -12,6 +12,7 @@ import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import Profile from "@/pages/profile";
 import Materials from "@/pages/materials";
+import MaterialDetail from "@/pages/material-detail";
 import Chat from "@/pages/chat";
 import Flashcards from "@/pages/flashcards";
 import Quizzes from "@/pages/quizzes";
@@ -34,6 +35,7 @@ function Router() {
           <Route path="/" component={Dashboard} />
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/profile" component={Profile} />
+          <Route path="/materials/:id" component={MaterialDetail} />
           <Route path="/materials" component={Materials} />
           <Route path="/chat" component={Chat} />
           <Route path="/flashcards" component={Flashcards} />

@@ -39,8 +39,11 @@ Preferred communication style: Simple, everyday language.
 
 **File Upload Strategy**
 - Multer middleware with in-memory storage for PDF uploads
-- Files processed server-side before storage
-- Study materials stored with metadata in database
+- Files uploaded to Replit Object Storage using Google Cloud Storage SDK
+- Object storage service (`server/objectStorage.ts`) handles all file operations
+- Access control implemented via ACL policies (`server/objectAcl.ts`)
+- Private files require authentication and owner verification
+- Study materials stored with metadata in database referencing object storage paths
 
 ### Backend Architecture
 
@@ -116,7 +119,10 @@ Database indexes on frequently queried fields (user_id, session expiry)
 
 **Storage Strategy**
 - File metadata stored in PostgreSQL
-- Binary files (PDFs) handled via object storage (fileUrl references)
+- Binary files (PDFs) stored in Replit Object Storage private directory
+- File paths stored as `/objects/{fileName}` in database
+- ObjectStorageService handles upload, download, and ACL policy enforcement
+- Owner-based access control ensures users can only access their own files
 - JSON data for complex structures (mind maps, quiz options)
 - Timestamps for all records (createdAt, updatedAt)
 

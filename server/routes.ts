@@ -95,34 +95,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Only PDF files are allowed" });
       }
 
-      // Upload to object storage
-      const fileName = `${userId}/${Date.now()}_${file.originalname}`;
-      const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID!;
-      const privateDir = process.env.PRIVATE_OBJECT_DIR!;
+      const { ObjectStorageService, objectStorageClient } = await import("./objectStorage");
+      const { setObjectAclPolicy } = await import("./objectAcl");
       
-      // Use object storage API to upload file
-      const uploadUrl = `https://storage.googleapis.com/upload/storage/v1/b/${bucketId}/o?uploadType=media&name=${privateDir}/${fileName}`;
+      const objectStorageService = new ObjectStorageService();
+      const privateDir = objectStorageService.getPrivateObjectDir();
       
-      const uploadResponse = await fetch(uploadUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": file.mimetype,
+      const fileName = `pdfs/${userId}/${Date.now()}_${file.originalname}`;
+      const fullPath = `${privateDir}/${fileName}`;
+      
+      const pathParts = fullPath.split("/").filter(p => p);
+      const bucketName = pathParts[0];
+      const objectName = pathParts.slice(1).join("/");
+      
+      const bucket = objectStorageClient.bucket(bucketName);
+      const bucketFile = bucket.file(objectName);
+      
+      await bucketFile.save(file.buffer, {
+        contentType: file.mimetype,
+        metadata: {
+          contentType: file.mimetype,
         },
-        body: file.buffer,
       });
+      
+      await setObjectAclPolicy(bucketFile, {
+        owner: userId,
+        visibility: "private",
+      });
+      
+      const objectPath = `/objects/${fileName}`;
 
-      if (!uploadResponse.ok) {
-        throw new Error("Failed to upload file to storage");
-      }
-
-      const fileUrl = `https://storage.googleapis.com/${bucketId}/${privateDir}/${fileName}`;
-
-      // Save to database
       const material = await storage.createStudyMaterial({
         userId,
         title: file.originalname.replace(".pdf", ""),
         fileName: file.originalname,
-        fileUrl,
+        fileUrl: objectPath,
         fileSize: file.size,
       });
 
@@ -130,6 +137,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error uploading study material:", error);
       res.status(500).json({ message: error.message || "Failed to upload study material" });
+    }
+  });
+
+  app.get("/objects/:objectPath(*)", isAuthenticated, async (req: any, res) => {
+    const userId = req.user?.claims?.sub;
+    const { ObjectStorageService, ObjectNotFoundError } = await import("./objectStorage");
+    const { ObjectPermission } = await import("./objectAcl");
+    
+    const objectStorageService = new ObjectStorageService();
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+      const canAccess = await objectStorageService.canAccessObjectEntity({
+        objectFile,
+        userId: userId,
+        requestedPermission: ObjectPermission.READ,
+      });
+      if (!canAccess) {
+        return res.sendStatus(401);
+      }
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error("Error checking object access:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
     }
   });
 
