@@ -562,26 +562,37 @@ async function handleMuteAll(ws: WebSocket, msg: WSMessage, userId: string) {
 async function handleConcentrationToggle(ws: WebSocket, msg: WSMessage, userId: string) {
   const { sessionId, data } = msg;
   
+  console.log("[ConcentrationToggle] Received from userId:", userId, "sessionId:", sessionId, "data:", data);
+  
   // Verify sender is participant
   const senderParticipant = await storage.getCollabParticipantByUserAndSession(userId, sessionId);
   if (!senderParticipant) {
+    console.log("[ConcentrationToggle] User not a participant, closing connection");
     ws.close(1008, "Unauthorized");
     return;
   }
   
   // Verify sender is host
   const session = await storage.getCollabSession(sessionId);
+  console.log("[ConcentrationToggle] Session:", session?.id, "hostUserId:", session?.hostUserId, "isHost:", session?.hostUserId === userId);
+  
   if (session && session.hostUserId === userId) {
     const newMode = data?.enabled ?? !session.concentrationMode;
+    console.log("[ConcentrationToggle] Updating concentration mode to:", newMode);
+    
     await storage.updateCollabSession(sessionId, {
       concentrationMode: newMode,
     });
 
+    console.log("[ConcentrationToggle] Broadcasting concentration_toggled with enabled:", newMode);
+    // Don't pass sender parameter so the host also receives the update
     broadcast(sessionId, {
       type: "concentration_toggled",
       sessionId,
       data: { enabled: newMode },
     });
+  } else {
+    console.log("[ConcentrationToggle] User is not host, ignoring request");
   }
 }
 

@@ -11,11 +11,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Users, Plus, LogIn, Copy, Clock, Pause, Play, Bell, Volume2, VolumeX, UserX, Eye, EyeOff } from "lucide-react";
+import { Users, Plus, LogIn, Copy, Clock, Pause, Play, Bell, Volume2, VolumeX, UserX, Eye, EyeOff, Pen, Eraser, Highlighter, Send } from "lucide-react";
 import type { CollabSession, CollabParticipant, User } from "@shared/schema";
 
 interface ParticipantWithUser extends CollabParticipant {
   user?: User;
+}
+
+interface ChatMessage {
+  id: string;
+  userId: string;
+  userName: string;
+  content: string;
+  createdAt: string | Date;
 }
 
 export default function Collab() {
@@ -35,7 +43,12 @@ export default function Collab() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawColor, setDrawColor] = useState("#000000");
+  const [drawTool, setDrawTool] = useState<"pen" | "eraser" | "highlighter">("pen");
+  const [drawSize, setDrawSize] = useState<number>(2);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
   // Fetch user's sessions
   const { data: mySessions } = useQuery<CollabSession[]>({
@@ -156,6 +169,7 @@ export default function Collab() {
 
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
+      console.log("[WebSocket] Received message:", msg.type, msg);
       handleWebSocketMessage(msg);
     };
 
@@ -207,9 +221,26 @@ export default function Collab() {
         renderCanvas(msg.data);
         break;
       case "concentration_toggled":
+        console.log("Received concentration_toggled:", msg.data.enabled);
         if (activeSession) {
+          console.log("Updating activeSession concentrationMode from", activeSession.concentrationMode, "to", msg.data.enabled);
           setActiveSession({ ...activeSession, concentrationMode: msg.data.enabled });
+        } else {
+          console.log("No activeSession, cannot update concentration mode");
         }
+        break;
+      case "chat_message":
+        setChatMessages(prev => [...prev, msg.data]);
+        setTimeout(() => {
+          chatScrollRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
+        break;
+      case "action_blocked":
+        toast({
+          title: "Action Blocked",
+          description: msg.data.reason,
+          variant: "destructive",
+        });
         break;
     }
   };
@@ -271,9 +302,24 @@ export default function Collab() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
+    // Broadcast drawing state to show active user
+    if (wsRef.current && activeSession) {
+      wsRef.current.send(JSON.stringify({
+        type: "drawing_state",
+        sessionId: activeSession.id,
+        data: { isDrawing: true, tool: drawTool, color: drawColor, size: drawSize },
+      }));
+    }
+    
     const newContent = {
       ...whiteboardContent,
-      elements: [...whiteboardContent.elements, { type: "path", color: drawColor, points: [{ x, y }] }],
+      elements: [...whiteboardContent.elements, { 
+        type: "path", 
+        tool: drawTool,
+        color: drawColor, 
+        size: drawSize,
+        points: [{ x, y }] 
+      }],
     };
     setWhiteboardContent(newContent);
   };
@@ -307,6 +353,15 @@ export default function Collab() {
     if (isDrawing && activeSession) {
       setIsDrawing(false);
       
+      // Broadcast stopped drawing state
+      if (wsRef.current && activeSession) {
+        wsRef.current.send(JSON.stringify({
+          type: "drawing_state",
+          sessionId: activeSession.id,
+          data: { isDrawing: false, tool: drawTool, color: drawColor, size: drawSize },
+        }));
+      }
+      
       // Schedule auto-save (10 seconds after drawing stops)
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
@@ -328,15 +383,35 @@ export default function Collab() {
     
     content.elements?.forEach((element: any) => {
       if (element.type === "path" && element.points?.length > 0) {
-        ctx.strokeStyle = element.color || "#000000";
-        ctx.lineWidth = 2;
+        const tool = element.tool || "pen";
+        const size = element.size || 2;
+        
+        if (tool === "eraser") {
+          ctx.globalCompositeOperation = "destination-out";
+          ctx.strokeStyle = "rgba(0,0,0,1)";
+        } else if (tool === "highlighter") {
+          ctx.globalCompositeOperation = "source-over";
+          ctx.strokeStyle = element.color || "#ffff00";
+          ctx.globalAlpha = 0.3;
+        } else {
+          ctx.globalCompositeOperation = "source-over";
+          ctx.strokeStyle = element.color || "#000000";
+          ctx.globalAlpha = 1.0;
+        }
+        
+        ctx.lineWidth = size;
         ctx.lineCap = "round";
+        ctx.lineJoin = "round";
         ctx.beginPath();
         ctx.moveTo(element.points[0].x, element.points[0].y);
         element.points.forEach((point: any) => {
           ctx.lineTo(point.x, point.y);
         });
         ctx.stroke();
+        
+        // Reset for next element
+        ctx.globalAlpha = 1.0;
+        ctx.globalCompositeOperation = "source-over";
       }
     });
   };
@@ -354,6 +429,18 @@ export default function Collab() {
         data: newContent,
       }));
     }
+  };
+
+  const sendChatMessage = () => {
+    if (!chatInput.trim() || !wsRef.current || !activeSession) return;
+    
+    wsRef.current.send(JSON.stringify({
+      type: "chat_message",
+      sessionId: activeSession.id,
+      data: { content: chatInput },
+    }));
+    
+    setChatInput("");
   };
 
   // Tab visibility detection
@@ -419,11 +506,14 @@ export default function Collab() {
 
   const toggleConcentrationMode = () => {
     if (wsRef.current && activeSession) {
+      console.log("Toggling concentration mode from", activeSession.concentrationMode, "to", !activeSession.concentrationMode);
       wsRef.current.send(JSON.stringify({
         type: "concentration_toggle",
         sessionId: activeSession.id,
         data: { enabled: !activeSession.concentrationMode },
       }));
+    } else {
+      console.log("Cannot toggle - wsRef:", !!wsRef.current, "activeSession:", !!activeSession);
     }
   };
 
@@ -526,9 +616,55 @@ export default function Collab() {
         <div className="flex-1 grid grid-cols-3 gap-4 min-h-0">
           {/* Whiteboard */}
           <Card className="col-span-2 flex flex-col">
-            <div className="p-4 border-b flex items-center justify-between">
-              <h2 className="font-semibold">Collaborative Whiteboard</h2>
-              <div className="flex gap-2">
+            <div className="p-4 border-b space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold">Collaborative Whiteboard</h2>
+                <Button size="sm" variant="outline" onClick={clearCanvas} data-testid="button-clear-canvas">
+                  Clear
+                </Button>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    variant={drawTool === "pen" ? "default" : "outline"}
+                    onClick={() => setDrawTool("pen")}
+                    data-testid="button-tool-pen"
+                  >
+                    <Pen className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={drawTool === "eraser" ? "default" : "outline"}
+                    onClick={() => setDrawTool("eraser")}
+                    data-testid="button-tool-eraser"
+                  >
+                    <Eraser className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={drawTool === "highlighter" ? "default" : "outline"}
+                    onClick={() => setDrawTool("highlighter")}
+                    data-testid="button-tool-highlighter"
+                  >
+                    <Highlighter className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Separator orientation="vertical" className="h-6" />
+                <div className="flex gap-1">
+                  {[1, 2, 4, 8].map((size) => (
+                    <Button
+                      key={size}
+                      size="sm"
+                      variant={drawSize === size ? "default" : "outline"}
+                      onClick={() => setDrawSize(size)}
+                      data-testid={`button-size-${size}`}
+                    >
+                      {size}px
+                    </Button>
+                  ))}
+                </div>
+                <Separator orientation="vertical" className="h-6" />
                 <Input
                   type="color"
                   value={drawColor}
@@ -536,9 +672,6 @@ export default function Collab() {
                   className="w-12 h-9"
                   data-testid="input-draw-color"
                 />
-                <Button size="sm" variant="outline" onClick={clearCanvas} data-testid="button-clear-canvas">
-                  Clear
-                </Button>
               </div>
             </div>
             <div className="flex-1 p-4">
@@ -636,6 +769,53 @@ export default function Collab() {
                   ))}
                 </div>
               </ScrollArea>
+            </Card>
+
+            {/* Group Chat */}
+            <Card className="flex-1 flex flex-col">
+              <div className="p-4 border-b">
+                <h3 className="font-semibold">Group Chat</h3>
+              </div>
+              <ScrollArea className="flex-1 max-h-64">
+                <div className="p-4 space-y-3">
+                  {chatMessages.map((msg) => (
+                    <div key={msg.id} className="space-y-1" data-testid={`chat-message-${msg.id}`}>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-sm font-medium">{msg.userName}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="text-sm">{msg.content}</p>
+                    </div>
+                  ))}
+                  <div ref={chatScrollRef} />
+                </div>
+              </ScrollArea>
+              <div className="p-4 border-t">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Type a message..."
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        sendChatMessage();
+                      }
+                    }}
+                    data-testid="input-chat-message"
+                  />
+                  <Button
+                    size="icon"
+                    onClick={sendChatMessage}
+                    disabled={!chatInput.trim()}
+                    data-testid="button-send-chat"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </Card>
           </div>
         </div>
