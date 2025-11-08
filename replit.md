@@ -20,7 +20,15 @@ The backend is an Express.js server on Node.js, written in TypeScript. It provid
 The platform uses PostgreSQL (Neon serverless) with Drizzle ORM for type-safe queries. Core entities include Users, Study Materials, Flashcards, Quizzes, Quiz Attempts, Mind Maps, Summaries, Study Sessions, Todos, Pomodoro Sessions, Chat Messages, and Sessions. Binary files like PDFs are stored in Replit Object Storage, with metadata and paths in PostgreSQL.
 
 ### Collaboration System
-The platform features a real-time collaboration system using WebSockets for shared study sessions. This includes a collaborative whiteboard, host-controlled concentration mode, coordinated break timers, and activity tracking. WebSocket connections are authenticated via Express session cookies, and authorization is enforced for all actions. Session, participant, whiteboard, and activity data are stored in dedicated PostgreSQL tables with cascade deletes.
+The platform features a real-time collaboration system using WebSockets for shared study sessions. This includes a collaborative whiteboard with pen/eraser/highlighter tools (1px-8px sizes), host-controlled concentration mode, coordinated break timers, and activity tracking. WebSocket connections are authenticated via Express session cookies, and authorization is enforced for all actions. Session, participant, whiteboard, and activity data are stored in dedicated PostgreSQL tables with cascade deletes.
+
+### Gamification System
+The platform includes a comprehensive leaderboard system that tracks and ranks users based on their study activity:
+- **Study Time Leaderboard**: Ranks users by total study time (in minutes), updated automatically when Pomodoro sessions complete
+- **Quiz Score Leaderboard**: Ranks users by total quiz score, displaying average score percentage and quiz count, updated when quiz attempts are submitted
+- User stats tracked: `totalStudyTime`, `totalQuizScore`, `quizzesCompleted`, `currentStreak`, `longestStreak`, `lastStudyDate`
+- Leaderboards filter to show only users with activity (study time > 0 or quizzes completed > 0)
+- Real-time UI updates with current user highlighting and rank indicators (trophies/medals for top 3)
 
 ## External Dependencies
 

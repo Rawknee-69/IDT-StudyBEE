@@ -842,7 +842,18 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       const topUsers = await storage.getTopUsersByStudyTime(limit);
-      res.json(topUsers);
+      
+      // Transform data to match frontend expectations
+      const leaderboard = topUsers.map(user => ({
+        userId: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileImageUrl: user.profileImageUrl,
+        totalTime: user.totalStudyTime, // in minutes
+      }));
+      
+      res.json(leaderboard);
     } catch (error) {
       console.error("Error fetching study time leaderboard:", error);
       res.status(500).json({ message: "Failed to fetch study time leaderboard" });
@@ -853,7 +864,21 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       const topUsers = await storage.getTopUsersByQuizScore(limit);
-      res.json(topUsers);
+      
+      // Transform data to match frontend expectations
+      const leaderboard = topUsers.map(user => ({
+        userId: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileImageUrl: user.profileImageUrl,
+        averageScore: user.quizzesCompleted > 0 
+          ? (user.totalQuizScore / user.quizzesCompleted) 
+          : 0,
+        quizCount: user.quizzesCompleted,
+      }));
+      
+      res.json(leaderboard);
     } catch (error) {
       console.error("Error fetching quiz score leaderboard:", error);
       res.status(500).json({ message: "Failed to fetch quiz score leaderboard" });

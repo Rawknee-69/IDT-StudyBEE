@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, gt } from "drizzle-orm";
 import type {
   User,
   InsertUser,
@@ -256,11 +256,21 @@ export class DbStorage implements IStorage {
   }
 
   async getTopUsersByStudyTime(limit: number): Promise<User[]> {
-    return await db.select().from(users).orderBy(desc(users.totalStudyTime)).limit(limit);
+    return await db
+      .select()
+      .from(users)
+      .where(gt(users.totalStudyTime, 0))
+      .orderBy(desc(users.totalStudyTime))
+      .limit(limit);
   }
 
   async getTopUsersByQuizScore(limit: number): Promise<User[]> {
-    return await db.select().from(users).orderBy(desc(users.totalQuizScore)).limit(limit);
+    return await db
+      .select()
+      .from(users)
+      .where(gt(users.quizzesCompleted, 0))
+      .orderBy(desc(users.totalQuizScore))
+      .limit(limit);
   }
 
   // Study Material operations
