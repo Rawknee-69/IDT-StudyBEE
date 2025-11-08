@@ -639,6 +639,16 @@ async function handleReactionAdd(ws: WebSocket, msg: WSMessage, userId: string) 
     return;
   }
   
+  // Check if participant is muted
+  if (participant.isMuted) {
+    sendToClient(ws, {
+      type: "action_blocked",
+      sessionId,
+      data: { reason: "You are currently muted" },
+    });
+    return;
+  }
+  
   // Get user info
   const user = await storage.getUser(userId);
   
