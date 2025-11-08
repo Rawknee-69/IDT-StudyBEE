@@ -231,8 +231,20 @@ export type StudyMaterial = typeof studyMaterials.$inferSelect;
 export type InsertFlashcard = z.infer<typeof insertFlashcardSchema>;
 export type Flashcard = typeof flashcards.$inferSelect;
 
+// Quiz question type structure
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctAnswer: string;
+}
+
 export type InsertQuiz = z.infer<typeof insertQuizSchema>;
 export type Quiz = typeof quizzes.$inferSelect;
+
+// Extended Quiz type with properly typed questions array
+export interface QuizWithQuestions extends Omit<Quiz, 'questions'> {
+  questions: QuizQuestion[];
+}
 
 export type InsertQuizAttempt = z.infer<typeof insertQuizAttemptSchema>;
 export type QuizAttempt = typeof quizAttempts.$inferSelect;

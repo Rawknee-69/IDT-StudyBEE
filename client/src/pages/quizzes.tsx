@@ -7,7 +7,7 @@ import { Sparkles, Play, FileText, Trophy, AlertTriangle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import type { Quiz, QuizAttempt, StudyMaterial } from "@shared/schema";
+import type { Quiz, QuizWithQuestions, QuizAttempt, StudyMaterial } from "@shared/schema";
 import {
   Select,
   SelectContent,
@@ -26,7 +26,7 @@ export default function Quizzes() {
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const [selectedMaterial, setSelectedMaterial] = useState<string | null>(null);
   const [questionCount, setQuestionCount] = useState("10");
-  const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
+  const [activeQuiz, setActiveQuiz] = useState<QuizWithQuestions | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
@@ -74,7 +74,7 @@ export default function Quizzes() {
     enabled: isAuthenticated,
   });
 
-  const { data: quizzes } = useQuery<Quiz[]>({
+  const { data: quizzes } = useQuery<QuizWithQuestions[]>({
     queryKey: ["/api/quizzes", selectedMaterial],
     queryFn: async () => {
       const url = selectedMaterial 
@@ -92,7 +92,7 @@ export default function Quizzes() {
     enabled: isAuthenticated,
   });
 
-  const generateMutation = useMutation({
+  const generateMutation = useMutation<QuizWithQuestions, Error, void>({
     mutationFn: async () => {
       if (!selectedMaterial) throw new Error("No material selected");
       return await apiRequest("POST", "/api/quizzes/generate", {
@@ -100,7 +100,7 @@ export default function Quizzes() {
         questionCount: parseInt(questionCount),
       });
     },
-    onSuccess: (quiz: Quiz) => {
+    onSuccess: (quiz: QuizWithQuestions) => {
       queryClient.invalidateQueries({ queryKey: ["/api/quizzes", selectedMaterial] });
       toast({
         title: "Success",
@@ -160,7 +160,16 @@ export default function Quizzes() {
     },
   });
 
-  const startQuiz = (quiz: Quiz) => {
+  const startQuiz = (quiz: QuizWithQuestions) => {
+    // Safety check: ensure quiz has questions array
+    if (!quiz.questions || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
+      toast({
+        title: "Error",
+        description: "This quiz has no questions",
+        variant: "destructive",
+      });
+      return;
+    }
     setActiveQuiz(quiz);
     setAnswers({});
     setCurrentQuestionIndex(0);
@@ -258,8 +267,14 @@ export default function Quizzes() {
     return null;
   }
 
-  if (activeQuiz) {
+  if (activeQuiz && activeQuiz.questions && activeQuiz.questions.length > 0) {
     const currentQuestion = activeQuiz.questions[currentQuestionIndex];
+    if (!currentQuestion) {
+      // Safety: if current question is undefined, reset quiz
+      setActiveQuiz(null);
+      setCurrentQuestionIndex(0);
+      return null;
+    }
     const progress = ((currentQuestionIndex + 1) / activeQuiz.questions.length) * 100;
     const answeredCount = Object.keys(answers).length;
 
