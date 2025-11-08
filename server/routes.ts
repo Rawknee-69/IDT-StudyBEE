@@ -8,6 +8,7 @@ import { generateAudioFromText } from "./deepgram";
 import { objectStorage } from "./objectStorage";
 import { setObjectAclPolicy } from "./objectAcl";
 import { sanitizeMarkdown, sanitizeUserInput, sanitizeForAudio, sanitizeMindMapNode } from "./textUtils";
+import { setupCollabWebSocket } from "./collabWebSocket";
 import {
   insertStudyMaterialSchema,
   insertFlashcardSchema,
@@ -1036,5 +1037,9 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
   });
 
   const httpServer = createServer(app);
+  
+  // Setup WebSocket for collaboration
+  setupCollabWebSocket(httpServer);
+  
   return httpServer;
 }
