@@ -134,8 +134,26 @@ export default function Quizzes() {
     mutationFn: async (attemptData: any) => {
       return await apiRequest("POST", "/api/quiz-attempts", attemptData);
     },
-    onSuccess: () => {
+    onSuccess: (data: any, variables: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/quiz-attempts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
+      
+      if (variables.isCancelled) {
+        toast({
+          title: "Quiz Cancelled",
+          description: "Your attempt was cancelled due to tab switching",
+          variant: "destructive",
+        });
+      } else {
+        const score = variables.score;
+        const correctAnswers = variables.correctAnswers;
+        const totalQuestions = variables.totalQuestions;
+        toast({
+          title: "Quiz Submitted!",
+          description: `You scored ${score}% (${correctAnswers}/${totalQuestions} correct)`,
+        });
+      }
+      
       setActiveQuiz(null);
       setAnswers({});
       setCurrentQuestionIndex(0);
@@ -221,11 +239,6 @@ export default function Quizzes() {
         timeSpentSeconds: Math.floor((Date.now() - startTimeRef.current) / 1000),
         isCancelled: true,
       });
-      toast({
-        title: "Quiz Cancelled",
-        description: "Your attempt was cancelled due to tab switching",
-        variant: "destructive",
-      });
       return;
     }
 
@@ -246,11 +259,6 @@ export default function Quizzes() {
       correctAnswers: correctCount,
       timeSpentSeconds: Math.floor((Date.now() - startTimeRef.current) / 1000),
       isCancelled: false,
-    });
-
-    toast({
-      title: "Quiz Submitted!",
-      description: `You scored ${score}% (${correctCount}/${activeQuiz.questions.length} correct)`,
     });
   };
 
