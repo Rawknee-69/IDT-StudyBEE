@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Sparkles, FileText, Loader2, Volume2, VolumeX, FileStack } from "lucide-react";
+import { Sparkles, FileText, Loader2, Volume2, VolumeX, FileStack, Play, Pause, RotateCcw } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -16,6 +16,155 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { motion, AnimatePresence } from "framer-motion";
+import { Slider } from "@/components/ui/slider";
+
+// Custom Audio Player Component
+function CustomAudioPlayer({ audioUrl }: { audioUrl: string }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const updateTime = () => setCurrentTime(audio.currentTime);
+    const updateDuration = () => setDuration(audio.duration);
+    const handleEnded = () => setIsPlaying(false);
+
+    audio.addEventListener("timeupdate", updateTime);
+    audio.addEventListener("loadedmetadata", updateDuration);
+    audio.addEventListener("ended", handleEnded);
+
+    return () => {
+      audio.removeEventListener("timeupdate", updateTime);
+      audio.removeEventListener("loadedmetadata", updateDuration);
+      audio.removeEventListener("ended", handleEnded);
+    };
+  }, []);
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const toggleMute = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.muted = !isMuted;
+    setIsMuted(!isMuted);
+  };
+
+  const handleSeek = (value: number[]) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = value[0];
+    setCurrentTime(value[0]);
+  };
+
+  const handleRestart = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = 0;
+    setCurrentTime(0);
+  };
+
+  const formatTime = (time: number) => {
+    if (isNaN(time)) return "0:00";
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="mb-6"
+    >
+      <Card className="p-6 border-2 bg-gradient-to-br from-primary/5 to-primary/10" data-testid="audio-player-container">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/10">
+            <Volume2 className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Listen to Summary</p>
+            <p className="text-xs text-muted-foreground">AI-powered audio narration</p>
+          </div>
+        </div>
+
+        <audio ref={audioRef} src={audioUrl} preload="metadata" />
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-muted-foreground min-w-[45px]">
+              {formatTime(currentTime)}
+            </span>
+            <Slider
+              value={[currentTime]}
+              max={duration || 100}
+              step={0.1}
+              onValueChange={handleSeek}
+              className="flex-1"
+              data-testid="audio-slider"
+            />
+            <span className="text-xs font-medium text-muted-foreground min-w-[45px]">
+              {formatTime(duration)}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-center gap-2">
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={handleRestart}
+              className="h-9 w-9"
+              data-testid="button-restart"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              onClick={togglePlay}
+              className="h-12 w-12"
+              data-testid="button-play-pause"
+            >
+              {isPlaying ? (
+                <Pause className="h-5 w-5" />
+              ) : (
+                <Play className="h-5 w-5 ml-0.5" />
+              )}
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={toggleMute}
+              className="h-9 w-9"
+              data-testid="button-mute"
+            >
+              {isMuted ? (
+                <VolumeX className="h-4 w-4" />
+              ) : (
+                <Volume2 className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </div>
+      </Card>
+    </motion.div>
+  );
+}
 
 export default function Summaries() {
   const { toast } = useToast();
@@ -117,110 +266,202 @@ export default function Summaries() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8 flex items-center gap-3">
-        <FileStack className="h-8 w-8 text-primary" />
-        <div className="flex-1">
-          <h1 className="font-heading font-bold text-3xl md:text-4xl mb-2" data-testid="text-summaries-title">
-            AI Summaries
-          </h1>
-          <p className="text-muted-foreground" data-testid="text-summaries-subtitle">
-            Get comprehensive AI-generated summaries of your study materials
-          </p>
-        </div>
-      </div>
-
-      <div className="mb-8">
-        <Label className="mb-2 block">Study Material</Label>
-        <Select value={selectedMaterial || ""} onValueChange={(val) => setSelectedMaterial(val || null)}>
-          <SelectTrigger data-testid="select-material">
-            <SelectValue placeholder="Select study material" />
-          </SelectTrigger>
-          <SelectContent>
-            {materials?.map((material) => (
-              <SelectItem key={material.id} value={material.id} data-testid={`option-material-${material.id}`}>
-                {material.title}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {selectedMaterial && !summary && !summaryLoading && (
-        <div className="mb-8">
-          <Button
-            onClick={handleGenerate}
-            disabled={generateMutation.isPending}
-            data-testid="button-generate"
-          >
-            <Sparkles className="h-4 w-4 mr-2" />
-            {generateMutation.isPending ? "Generating..." : "Generate Summary"}
-          </Button>
-        </div>
-      )}
-
-      {summaryLoading ? (
-        <Card className="p-12 text-center">
-          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Loading summary...</p>
-        </Card>
-      ) : generateMutation.isPending ? (
-        <Card className="p-12 text-center">
-          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Generating summary with AI...</p>
-          <p className="text-xs text-muted-foreground mt-2">This may take a moment</p>
-        </Card>
-      ) : summary ? (
-        <Card className="p-8" data-testid="card-summary">
-          {summary.audioUrl && (
-            <div className="mb-6 p-4 bg-muted rounded-lg" data-testid="audio-player-container">
-              <div className="flex items-center gap-3">
-                <Volume2 className="h-5 w-5 text-primary" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium mb-2">Listen to Summary</p>
-                  <audio
-                    controls
-                    className="w-full"
-                    data-testid="audio-player"
-                    preload="metadata"
-                  >
-                    <source src={summary.audioUrl} type="audio/mpeg" />
-                    Your browser does not support the audio element.
-                  </audio>
-                </div>
-              </div>
-            </div>
-          )}
-          <div className="prose prose-sm md:prose max-w-none dark:prose-invert">
-            <div className="whitespace-pre-wrap">{summary.content}</div>
+    <div className="container mx-auto px-4 py-6 md:py-8 max-w-5xl">
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="mb-6 md:mb-8"
+      >
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-3 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/10 backdrop-blur-sm">
+            <FileStack className="h-6 w-6 md:h-7 md:w-7 text-primary" />
           </div>
-          <div className="mt-6 pt-6 border-t">
-            <p className="text-xs text-muted-foreground">
-              Generated on {new Date(summary.createdAt).toLocaleDateString()}
+          <div className="flex-1">
+            <h1 className="font-heading font-bold text-2xl md:text-3xl" data-testid="text-summaries-title">
+              AI Summaries
+            </h1>
+            <p className="text-muted-foreground text-sm md:text-base" data-testid="text-summaries-subtitle">
+              Get comprehensive AI-generated summaries of your study materials
             </p>
-            <Button
-              onClick={handleGenerate}
-              variant="outline"
-              className="mt-4"
-              disabled={generateMutation.isPending}
-              data-testid="button-regenerate"
-            >
-              <Sparkles className="h-4 w-4 mr-2" />
-              Regenerate Summary
-            </Button>
           </div>
-        </Card>
-      ) : (
-        <Card className="p-12 text-center" data-testid="card-empty-state">
-          <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-          <h3 className="font-heading font-semibold text-lg mb-2">No Summary Yet</h3>
-          <p className="text-muted-foreground">
-            {selectedMaterial
-              ? "Generate a summary with AI to get started"
-              : "Select a study material to create a summary"}
-          </p>
-        </Card>
-      )}
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1 }}
+          className="mb-6"
+        >
+          <Label className="mb-2 block text-sm font-medium">Study Material</Label>
+          <Select value={selectedMaterial || ""} onValueChange={(val) => setSelectedMaterial(val || null)}>
+            <SelectTrigger data-testid="select-material" className="border-2">
+              <SelectValue placeholder="Select study material" />
+            </SelectTrigger>
+            <SelectContent>
+              {materials?.map((material) => (
+                <SelectItem key={material.id} value={material.id} data-testid={`option-material-${material.id}`}>
+                  {material.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </motion.div>
+
+        <AnimatePresence>
+          {selectedMaterial && !summary && !summaryLoading && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3 }}
+              className="mb-6"
+            >
+              <Button
+                onClick={handleGenerate}
+                disabled={generateMutation.isPending}
+                data-testid="button-generate"
+                className="w-full sm:w-auto shadow-sm"
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                {generateMutation.isPending ? "Generating..." : "Generate Summary"}
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
+      <AnimatePresence mode="wait">
+        {summaryLoading ? (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card className="p-8 md:p-12 text-center border-2">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+              >
+                <Loader2 className="h-12 w-12 mx-auto mb-4 text-primary" />
+              </motion.div>
+              <p className="text-muted-foreground font-medium">Loading summary...</p>
+            </Card>
+          </motion.div>
+        ) : generateMutation.isPending ? (
+          <motion.div
+            key="generating"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card className="p-8 md:p-12 text-center border-2 bg-gradient-to-br from-primary/5 to-primary/10">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+              >
+                <Loader2 className="h-12 w-12 mx-auto mb-4 text-primary" />
+              </motion.div>
+              <p className="text-muted-foreground font-medium mb-2">Generating summary with AI...</p>
+              <p className="text-xs text-muted-foreground">This may take a moment</p>
+            </Card>
+          </motion.div>
+        ) : summary ? (
+          <motion.div
+            key="summary"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.4 }}
+          >
+            <Card className="p-6 md:p-8 border-2 shadow-lg" data-testid="card-summary">
+              {summary.audioUrl && <CustomAudioPlayer audioUrl={summary.audioUrl} />}
+              
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.2, duration: 0.4 }}
+                className="prose prose-sm md:prose max-w-none dark:prose-invert"
+              >
+                <div className="whitespace-pre-wrap leading-relaxed">{summary.content}</div>
+              </motion.div>
+              
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3, duration: 0.4 }}
+                className="mt-6 pt-6 border-t flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-primary animate-pulse"></div>
+                  <p className="text-xs text-muted-foreground">
+                    Generated on {new Date(summary.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <Button
+                  onClick={handleGenerate}
+                  variant="outline"
+                  disabled={generateMutation.isPending}
+                  data-testid="button-regenerate"
+                  className="w-full sm:w-auto shadow-sm"
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Regenerate Summary
+                </Button>
+              </motion.div>
+            </Card>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="empty"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Card className="p-8 md:p-12 text-center border-2 border-dashed max-w-2xl mx-auto" data-testid="card-empty-state">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+                className="inline-block p-4 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 mb-4"
+              >
+                <FileText className="h-12 w-12 md:h-16 md:w-16 text-primary" />
+              </motion.div>
+              <motion.h3
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="font-heading font-semibold text-lg md:text-xl mb-2"
+              >
+                No Summary Yet
+              </motion.h3>
+              <motion.p
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="text-muted-foreground mb-4 text-sm md:text-base"
+              >
+                {selectedMaterial
+                  ? "Generate a comprehensive AI summary to get started"
+                  : "Select a study material above to create a summary"}
+              </motion.p>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.5 }}
+                className="flex items-center gap-1 justify-center text-xs text-muted-foreground"
+              >
+                <div className="h-2 w-2 bg-primary rounded-full animate-pulse"></div>
+                <span>Powered by AI</span>
+              </motion.div>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
