@@ -29,31 +29,37 @@ import NotFound from "@/pages/not-found";
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
+  if (isLoading) {
+    return null;
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <Switch>
+        <Route path="/" component={Landing} />
+        <Route component={NotFound} />
+      </Switch>
+    );
+  }
+
   return (
     <Switch>
-      {isLoading || !isAuthenticated ? (
-        <Route path="/" component={Landing} />
-      ) : (
-        <>
-          <Route path="/" component={Dashboard} />
-          <Route path="/dashboard" component={Dashboard} />
-          <Route path="/profile" component={Profile} />
-          <Route path="/materials/:id" component={MaterialDetail} />
-          <Route path="/materials" component={Materials} />
-          <Route path="/chat" component={Chat} />
-          <Route path="/flashcards" component={Flashcards} />
-          <Route path="/quizzes" component={Quizzes} />
-          <Route path="/mind-maps" component={MindMaps} />
-          <Route path="/summaries" component={Summaries} />
-          <Route path="/audio-library" component={AudioLibrary} />
-          <Route path="/todos" component={Todos} />
-          <Route path="/pomodoro" component={Pomodoro} />
-          <Route path="/concentration" component={Concentration} />
-          <Route path="/leaderboard" component={Leaderboard} />
-          <Route path="/collab" component={Collab} />
-          {/* Add more authenticated routes here */}
-        </>
-      )}
+      <Route path="/" component={Dashboard} />
+      <Route path="/dashboard" component={Dashboard} />
+      <Route path="/profile" component={Profile} />
+      <Route path="/materials/:id" component={MaterialDetail} />
+      <Route path="/materials" component={Materials} />
+      <Route path="/chat" component={Chat} />
+      <Route path="/flashcards" component={Flashcards} />
+      <Route path="/quizzes" component={Quizzes} />
+      <Route path="/mind-maps" component={MindMaps} />
+      <Route path="/summaries" component={Summaries} />
+      <Route path="/audio-library" component={AudioLibrary} />
+      <Route path="/todos" component={Todos} />
+      <Route path="/pomodoro" component={Pomodoro} />
+      <Route path="/concentration" component={Concentration} />
+      <Route path="/leaderboard" component={Leaderboard} />
+      <Route path="/collab" component={Collab} />
       <Route component={NotFound} />
     </Switch>
   );
