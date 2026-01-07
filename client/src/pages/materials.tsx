@@ -38,11 +38,22 @@ export default function Materials() {
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
+      // Get Clerk token for authentication
+      const clerk = (window as any).Clerk;
+      const token = clerk?.session ? await clerk.session.getToken() : null;
+      
+      if (!token) {
+        throw new Error("Authentication required. Please log in again.");
+      }
+
       const formData = new FormData();
       formData.append("file", file);
       
       const response = await fetch("/api/study-materials/upload", {
         method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
         body: formData,
         credentials: "include",
       });

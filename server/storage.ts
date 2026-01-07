@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, sql, gt } from "drizzle-orm";
+import { eq, desc, asc, sql, gt } from "drizzle-orm";
 import type {
   User,
   InsertUser,
@@ -568,7 +568,7 @@ export class DbStorage implements IStorage {
       .select()
       .from(chatMessages)
       .where(eq(chatMessages.userId, userId))
-      .orderBy(desc(chatMessages.createdAt));
+      .orderBy(asc(chatMessages.createdAt));
   }
 
   async getChatMessagesByMaterial(materialId: string): Promise<ChatMessage[]> {
@@ -576,7 +576,7 @@ export class DbStorage implements IStorage {
       .select()
       .from(chatMessages)
       .where(eq(chatMessages.materialId, materialId))
-      .orderBy(chatMessages.createdAt);
+      .orderBy(asc(chatMessages.createdAt));
   }
 
   async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {

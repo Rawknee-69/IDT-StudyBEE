@@ -5,10 +5,22 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Send, Bot, User, FileText, Sparkles, Loader2 } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Send, Bot, User, FileText, Sparkles, Loader2, Trash2, RotateCcw } from "lucide-react";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { apiRequest } from "@/lib/queryClient";
 import type { ChatMessage, StudyMaterial } from "@shared/schema";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -50,25 +62,100 @@ export default function Chat() {
   const { data: messages, isLoading: messagesLoading } = useQuery<ChatMessage[]>({
     queryKey: ["/api/chat/messages", selectedMaterial],
     queryFn: async () => {
+      // Get Clerk token for authentication
+      const clerk = (window as any).Clerk;
+      const token = clerk?.session ? await clerk.session.getToken() : null;
+      
+      if (!token) {
+        throw new Error("Authentication required. Please log in again.");
+      }
+
       const url = selectedMaterial 
         ? `/api/chat/messages?materialId=${selectedMaterial}`
         : "/api/chat/messages";
-      const response = await fetch(url, { credentials: "include" });
+      const response = await fetch(url, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+        credentials: "include",
+      });
       if (!response.ok) throw new Error("Failed to fetch messages");
       return response.json();
     },
     enabled: isAuthenticated,
   });
 
+  const deleteConversationMutation = useMutation({
+    mutationFn: async () => {
+      const url = selectedMaterial 
+        ? `/api/chat/messages?materialId=${selectedMaterial}`
+        : "/api/chat/messages";
+      return await apiRequest("DELETE", url);
+    },
+    onMutate: async () => {
+      // Optimistically clear the UI immediately
+      queryClient.setQueryData<ChatMessage[]>(["/api/chat/messages", selectedMaterial], []);
+    },
+    onSuccess: () => {
+      // Remove all related queries
+      queryClient.removeQueries({ 
+        queryKey: ["/api/chat/messages"],
+        exact: false 
+      });
+      
+      toast({
+        title: "Conversation Deleted",
+        description: "The chat conversation has been cleared.",
+      });
+      
+      // Force a hard reload to ensure everything is reset
+      setTimeout(() => {
+        window.location.reload();
+      }, 100);
+    },
+    onError: (error: Error) => {
+      // Refetch on error to restore correct state
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/messages", selectedMaterial] });
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete conversation",
+        variant: "destructive",
+      });
+    },
+  });
+
   const sendMessageWithStreaming = async (content: string) => {
     setIsStreaming(true);
     setStreamingMessage("");
     
+    // Optimistically update the messages list to show user message immediately
+    queryClient.setQueryData<ChatMessage[]>(["/api/chat/messages", selectedMaterial], (oldMessages = []) => {
+      const optimisticMessage = {
+        id: `temp-${Date.now()}`,
+        userId: user?.id || "",
+        materialId: selectedMaterial,
+        role: "user" as const,
+        content: content,
+        createdAt: new Date(),
+      } as ChatMessage;
+      return [...oldMessages, optimisticMessage];
+    });
+    scrollToBottom();
+    
     try {
+      // Get Clerk token for authentication
+      const clerk = (window as any).Clerk;
+      const token = clerk?.session ? await clerk.session.getToken() : null;
+      
+      if (!token) {
+        throw new Error("Authentication required. Please log in again.");
+      }
+
       const response = await fetch("/api/chat/message", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
         },
         credentials: "include",
         body: JSON.stringify({
@@ -109,7 +196,18 @@ export default function Chat() {
               try {
                 const data = JSON.parse(line.slice(6));
                 
-                if (data.type === "chunk") {
+                if (data.type === "userMessage") {
+                  // User message was saved, replace optimistic message with real one
+                  queryClient.setQueryData<ChatMessage[]>(["/api/chat/messages", selectedMaterial], (oldMessages = []) => {
+                    // Remove temporary message and add the real one
+                    const filtered = oldMessages.filter(m => !m.id.startsWith("temp-"));
+                    return [...filtered, data.message];
+                  });
+                  scrollToBottom();
+                } else if (data.type === "thinking") {
+                  // AI is thinking, show loading skeleton
+                  setStreamingMessage("");
+                } else if (data.type === "chunk") {
                   setStreamingMessage((prev) => prev + data.content);
                   scrollToBottom();
                 } else if (data.type === "complete") {
@@ -135,7 +233,9 @@ export default function Chat() {
           if (line.startsWith("data: ")) {
             try {
               const data = JSON.parse(line.slice(6));
-              if (data.type === "complete") {
+              if (data.type === "userMessage") {
+                queryClient.invalidateQueries({ queryKey: ["/api/chat/messages", selectedMaterial] });
+              } else if (data.type === "complete") {
                 setIsStreaming(false);
                 setStreamingMessage("");
                 queryClient.invalidateQueries({ queryKey: ["/api/chat/messages", selectedMaterial] });
@@ -217,49 +317,90 @@ export default function Chat() {
   return (
     <div className="h-full flex flex-col bg-background">
       <motion.div 
-        className="p-4 md:p-6 border-b bg-card/50 backdrop-blur-sm"
+        className="p-3 md:p-4 border-b bg-card/50 backdrop-blur-sm"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="max-w-5xl mx-auto">
-          <div className="flex items-center gap-3 mb-4">
+        <div className="max-w-3xl mx-auto">
+          <div className="flex items-center gap-2 mb-3">
             <div className="p-2 rounded-lg bg-gradient-to-br from-primary/20 to-primary/10">
-              <Sparkles className="h-6 w-6 md:h-7 md:w-7 text-primary" />
+              <Sparkles className="h-5 w-5 md:h-6 md:w-6 text-primary" />
             </div>
             <div className="flex-1">
-              <h1 className="font-heading font-bold text-xl md:text-3xl" data-testid="text-chat-title">
+              <h1 className="font-heading font-bold text-lg md:text-2xl" data-testid="text-chat-title">
                 AI Study Assistant
               </h1>
-              <p className="text-muted-foreground text-sm md:text-base hidden sm:block" data-testid="text-chat-subtitle">
+              <p className="text-muted-foreground text-xs md:text-sm hidden sm:block" data-testid="text-chat-subtitle">
                 Ask questions about your study materials or get general study help
               </p>
             </div>
+            {messages && messages.length > 0 && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    data-testid="button-delete-conversation"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Conversation</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete this conversation? This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => deleteConversationMutation.mutate()}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
 
-          <div className="max-w-xs">
-            <Select value={selectedMaterial || "general"} onValueChange={(val) => setSelectedMaterial(val === "general" ? null : val)}>
-              <SelectTrigger data-testid="select-material" className="border-2">
-                <SelectValue placeholder="Select study material" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="general" data-testid="option-general">General Questions</SelectItem>
-                {materials?.map((material) => (
-                  <SelectItem key={material.id} value={material.id} data-testid={`option-material-${material.id}`}>
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-primary" />
-                      <span className="truncate">{material.title}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 max-w-xs">
+              <Select 
+                value={selectedMaterial || "general"} 
+                onValueChange={(val) => {
+                  const newMaterialId = val === "general" ? null : val;
+                  setSelectedMaterial(newMaterialId);
+                  // File upload is now handled automatically in the chat message endpoint
+                  // No need to initialize context separately
+                }}
+              >
+                <SelectTrigger data-testid="select-material" className="border-2 h-9 text-sm">
+                  <SelectValue placeholder="Select study material" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general" data-testid="option-general">General Questions</SelectItem>
+                  {materials?.map((material) => (
+                    <SelectItem key={material.id} value={material.id} data-testid={`option-material-${material.id}`}>
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-3.5 w-3.5 text-primary" />
+                        <span className="truncate text-sm">{material.title}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </motion.div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-6 md:px-6" data-testid="chat-messages-container">
-        <div className="max-w-5xl mx-auto space-y-4">
+      <div className="flex-1 overflow-y-auto px-3 py-4 md:px-4 scrollbar-hide" data-testid="chat-messages-container">
+        <div className="max-w-3xl mx-auto space-y-3">
           {messagesLoading ? (
             <div className="text-center py-12">
               <div className="inline-block h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
@@ -273,58 +414,68 @@ export default function Chat() {
                   initial={{ opacity: 0, y: 20, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{ duration: 0.3, delay: index * 0.05 }}
-                  className={`flex gap-2 md:gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                   data-testid={`message-${msg.id}`}
                 >
                   {msg.role === "assistant" && (
-                    <Avatar className="flex-shrink-0 w-8 h-8 md:w-9 md:h-9 ring-2 ring-primary/10">
+                    <Avatar className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 ring-2 ring-primary/10">
                       <AvatarImage src="/ai-avatar.png" alt="AI Assistant" />
                       <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10">
-                        <Bot className="h-4 w-4 md:h-5 md:w-5 text-primary" />
+                        <Bot className="h-3.5 w-3.5 md:h-4 md:w-4 text-primary" />
                       </AvatarFallback>
                     </Avatar>
                   )}
                   <div
-                    className={`rounded-2xl px-4 py-3 max-w-[85%] md:max-w-2xl shadow-sm ${
+                    className={`rounded-xl px-3 py-2 max-w-[80%] md:max-w-xl shadow-sm ${
                       msg.role === "user"
                         ? "bg-primary text-primary-foreground"
                         : "bg-card border-2"
                     }`}
                   >
-                    <p className="whitespace-pre-wrap break-words text-sm md:text-base leading-relaxed">{msg.content}</p>
-                    <p className={`text-xs mt-2 ${msg.role === "user" ? "opacity-70" : "text-muted-foreground"}`}>
+                    <p className="whitespace-pre-wrap break-words text-xs md:text-sm leading-relaxed">{msg.content}</p>
+                    <p className={`text-[10px] md:text-xs mt-1.5 ${msg.role === "user" ? "opacity-70" : "text-muted-foreground"}`}>
                       {new Date(msg.createdAt).toLocaleTimeString()}
                     </p>
                   </div>
                   {msg.role === "user" && (
-                    <Avatar className="flex-shrink-0 w-8 h-8 md:w-9 md:h-9 shadow-sm">
+                    <Avatar className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 shadow-sm">
                       <AvatarImage src={user?.profileImageUrl || "/user-avatar.png"} alt="User" />
                       <AvatarFallback className="bg-primary">
-                        <User className="h-4 w-4 md:h-5 md:w-5 text-primary-foreground" />
+                        <User className="h-3.5 w-3.5 md:h-4 md:w-4 text-primary-foreground" />
                       </AvatarFallback>
                     </Avatar>
                   )}
                 </motion.div>
               ))}
-              {isStreaming && streamingMessage && (
+              {isStreaming && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="flex gap-2 md:gap-3 justify-start"
+                  className="flex gap-2 justify-start"
                 >
-                  <Avatar className="flex-shrink-0 w-8 h-8 md:w-9 md:h-9 ring-2 ring-primary/10">
+                  <Avatar className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 ring-2 ring-primary/10">
                     <AvatarImage src="/ai-avatar.png" alt="AI Assistant" />
                     <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10">
-                      <Loader2 className="h-4 w-4 md:h-5 md:w-5 text-primary animate-spin" />
+                      <Loader2 className="h-3.5 w-3.5 md:h-4 md:w-4 text-primary animate-spin" />
                     </AvatarFallback>
                   </Avatar>
-                  <div className="rounded-2xl px-4 py-3 max-w-[85%] md:max-w-2xl bg-card border-2 shadow-sm">
-                    <p className="whitespace-pre-wrap break-words text-sm md:text-base leading-relaxed">{streamingMessage}</p>
-                    <div className="flex items-center gap-1 mt-2">
-                      <div className="h-2 w-2 bg-primary rounded-full animate-pulse"></div>
-                      <div className="h-2 w-2 bg-primary rounded-full animate-pulse delay-75"></div>
-                      <div className="h-2 w-2 bg-primary rounded-full animate-pulse delay-150"></div>
-                    </div>
+                  <div className="rounded-xl px-3 py-2 max-w-[80%] md:max-w-xl bg-card border-2 shadow-sm">
+                    {streamingMessage ? (
+                      <>
+                        <p className="whitespace-pre-wrap break-words text-xs md:text-sm leading-relaxed">{streamingMessage}</p>
+                        <div className="flex items-center gap-1 mt-1.5">
+                          <div className="h-1.5 w-1.5 bg-primary rounded-full animate-pulse"></div>
+                          <div className="h-1.5 w-1.5 bg-primary rounded-full animate-pulse delay-75"></div>
+                          <div className="h-1.5 w-1.5 bg-primary rounded-full animate-pulse delay-150"></div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="h-3 bg-muted rounded w-3/4 animate-pulse"></div>
+                        <div className="h-3 bg-muted rounded w-full animate-pulse"></div>
+                        <div className="h-3 bg-muted rounded w-5/6 animate-pulse"></div>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -357,19 +508,19 @@ export default function Chat() {
       </div>
 
       <motion.div 
-        className="p-4 md:p-6 border-t bg-card/50 backdrop-blur-sm"
+        className="p-3 md:p-4 border-t bg-card/50 backdrop-blur-sm"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.1 }}
       >
-        <div className="max-w-5xl mx-auto">
-          <div className="flex gap-2 md:gap-3">
+        <div className="max-w-3xl mx-auto">
+          <div className="flex gap-2">
             <Textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyPress}
               placeholder={selectedMaterial ? "Ask a question about this material..." : "Ask me anything..."}
-              className="resize-none border-2 text-sm md:text-base"
+              className="resize-none border-2 text-xs md:text-sm"
               rows={2}
               disabled={isStreaming}
               data-testid="input-message"
@@ -378,13 +529,13 @@ export default function Chat() {
               onClick={handleSend}
               disabled={!message.trim() || isStreaming}
               size="icon"
-              className="h-full min-w-[48px]"
+              className="h-full min-w-[40px]"
               data-testid="button-send"
             >
               {isStreaming ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Send className="h-5 w-5" />
+                <Send className="h-4 w-4" />
               )}
             </Button>
           </div>

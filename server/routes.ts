@@ -3,11 +3,10 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./clerkAuth";
 import multer from "multer";
-import { GoogleGenAI } from "@google/genai";
+import { createPartFromUri, GoogleGenAI } from "@google/genai";
 // Import Deepgram function - will only fail when actually called if API key is missing
 import { generateAudioFromText } from "./deepgram";
-import { objectStorage } from "./objectStorage";
-import { setObjectAclPolicy } from "./objectAcl";
+// objectStorage and setObjectAclPolicy no longer needed - using UploadThing instead
 import { sanitizeMarkdown, sanitizeUserInput, sanitizeForAudio, sanitizeMindMapNode } from "./textUtils";
 import { setupCollabWebSocket } from "./collabWebSocket";
 import {
@@ -26,7 +25,11 @@ import {
   insertCollabParticipantSchema,
   insertCollabWhiteboardSchema,
   insertCollabActivitySchema,
+  chatMessages,
+  studyMaterials,
 } from "@shared/schema";
+import { db } from "./db";
+import { eq, and, isNull } from "drizzle-orm";
 
 // Initialize Gemini AI
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
@@ -126,48 +129,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Only PDF files are allowed" });
       }
 
-      const { ObjectStorageService, objectStorageClient } = await import("./objectStorage");
-      const { setObjectAclPolicy } = await import("./objectAcl");
-      
-      const objectStorageService = new ObjectStorageService();
-      const privateDir = objectStorageService.getPrivateObjectDir();
-      
-      const sanitizedFilename = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const fileName = `pdfs/${userId}/${Date.now()}_${sanitizedFilename}`;
-      const fullPath = `${privateDir}/${fileName}`;
-      
-      const pathParts = fullPath.split("/").filter(p => p);
-      const bucketName = pathParts[0];
-      const objectName = pathParts.slice(1).join("/");
-      
-      const bucket = objectStorageClient.bucket(bucketName);
-      const bucketFile = bucket.file(objectName);
-      
-      await bucketFile.save(file.buffer, {
-        contentType: file.mimetype,
-        metadata: {
-          contentType: file.mimetype,
-        },
-      });
-      
-      const [exists] = await bucketFile.exists();
-      if (!exists) {
-        throw new Error("File failed to upload to object storage");
+      // Ensure user exists in database before creating study material
+      let user = await storage.getUser(userId);
+      if (!user) {
+        user = await storage.upsertUser({
+          id: userId,
+          email: req.user.email,
+          firstName: req.user.firstName || undefined,
+          lastName: req.user.lastName || undefined,
+          profileImageUrl: req.user.profileImageUrl || undefined,
+        });
       }
+
+      // Use UploadThing for file storage
+      const { utapi } = await import("./uploadthing");
       
-      await setObjectAclPolicy(bucketFile, {
-        owner: userId,
-        visibility: "private",
+      if (!utapi) {
+        throw new Error("UploadThing not configured. Please set UPLOADTHING_TOKEN in .env");
+      }
+
+      const sanitizedFilename = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+      
+      // Create a File object for UploadThing
+      // File is available in Node.js 18+ globally
+      const fileForUpload = new File([file.buffer], sanitizedFilename, { 
+        type: file.mimetype,
+        lastModified: Date.now(),
       });
       
-      const objectPath = `/objects/${fileName}`;
+      // Upload file to UploadThing
+      // uploadFiles returns a single result for single file, array for multiple
+      const uploadResult = await utapi.uploadFiles(fileForUpload);
+
+      // Use ufsUrl instead of url (deprecated in v9)
+      const fileUrl = uploadResult?.data?.ufsUrl || uploadResult?.data?.url;
+      
+      if (!uploadResult || !uploadResult.data || !fileUrl) {
+        throw new Error("File failed to upload to UploadThing");
+      }
+
+      // Extract PDF text for AI context (async, don't block upload)
+      let extractedText: string | null = null;
+      try {
+        // Use dynamic import with proper handling for pdf-parse
+        const pdfParseModule = await import("pdf-parse");
+        const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+        if (pdfParse && typeof pdfParse === 'function') {
+          const pdfData = await pdfParse(file.buffer);
+          extractedText = pdfData?.text || "";
+          // Limit to first 100k characters to avoid token limits
+          if (extractedText && extractedText.length > 100000) {
+            extractedText = extractedText.substring(0, 100000) + "... [truncated]";
+          }
+        }
+      } catch (pdfError) {
+        console.error("Error extracting PDF text:", pdfError);
+        // Continue without extracted text - can be extracted later
+      }
 
       const material = await storage.createStudyMaterial({
         userId,
         title: file.originalname.replace(".pdf", ""),
         fileName: file.originalname,
-        fileUrl: objectPath,
+        fileUrl: fileUrl,
         fileSize: file.size,
+        extractedText: extractedText || undefined,
       });
 
       res.json(material);
@@ -178,29 +204,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/objects/:objectPath(*)", isAuthenticated, async (req: any, res) => {
-    const userId = req.user?.id;
-    const { ObjectStorageService, ObjectNotFoundError } = await import("./objectStorage");
-    const { ObjectPermission } = await import("./objectAcl");
-    
-    const objectStorageService = new ObjectStorageService();
-    try {
-      const objectFile = await objectStorageService.getObjectEntityFile(req.path);
-      const canAccess = await objectStorageService.canAccessObjectEntity({
-        objectFile,
-        userId: userId,
-        requestedPermission: ObjectPermission.READ,
-      });
-      if (!canAccess) {
-        return res.sendStatus(401);
-      }
-      objectStorageService.downloadObject(objectFile, res);
-    } catch (error) {
-      console.error("Error checking object access:", error);
-      if (error instanceof ObjectNotFoundError) {
-        return res.sendStatus(404);
-      }
-      return res.sendStatus(500);
-    }
+    // For UploadThing, files are accessed directly via their URLs
+    // This route is kept for backward compatibility but redirects to the stored URL
+    // In practice, files stored via UploadThing should be accessed directly via their URLs
+    return res.status(404).json({ message: "File not found. Files are accessed via their UploadThing URLs." });
   });
 
   app.delete("/api/study-materials/:id", isAuthenticated, async (req: any, res) => {
@@ -255,7 +262,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       Example format: [{"question": "What is X?", "answer": "X is..."}, ...]`;
 
       const result = await genAI.models.generateContent({
-        model: "gemini-2.0-flash-exp",
+        model: "gemini-2.0-flash",
         contents: prompt,
       });
       const text = result.text || "";
@@ -361,7 +368,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       Example format: [{"question": "What is X?", "options": ["A", "B", "C", "D"], "correctAnswer": "A"}, ...]`;
 
       const result = await genAI.models.generateContent({
-        model: "gemini-2.0-flash-exp",
+        model: "gemini-2.0-flash",
         contents: prompt,
       });
       const text = result.text || "";
@@ -500,7 +507,7 @@ IMPORTANT:
 Your goal is to ensure that even the most difficult concepts become easy to understand through your explanations and examples.`;
 
         const result = await genAI.models.generateContent({
-          model: "gemini-2.0-flash-exp",
+          model: "gemini-2.0-flash",
           contents: prompt,
         });
         content = sanitizeMarkdown(result.text || "");
@@ -526,21 +533,31 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
 
           console.log("Audio buffer generated, size:", audioBuffer.length, "bytes");
 
-          // Upload audio to object storage
-          const audioFileName = `summaries/audio_${materialId}_${Date.now()}.wav`;
-          console.log("Uploading audio to:", audioFileName);
+          // Upload audio to UploadThing
+          const audioFileName = `audio_${materialId}_${Date.now()}.wav`;
+          console.log("Uploading audio to UploadThing:", audioFileName);
           
-          await objectStorage.uploadFile(audioFileName, audioBuffer, "audio/wav");
-          console.log("Audio uploaded successfully");
+          const { utapi } = await import("./uploadthing");
+          if (!utapi) {
+            throw new Error("UploadThing not configured");
+          }
           
-          // Set ACL policy so user can access the audio
-          const audioFile = await objectStorage.getObjectEntityFile(`/objects/${audioFileName}`);
-          await setObjectAclPolicy(audioFile, {
-            owner: userId,
-            visibility: "private"
+          // Create a File object for UploadThing
+          const fileForUpload = new File([audioBuffer], audioFileName, { 
+            type: "audio/wav",
+            lastModified: Date.now(),
           });
           
-          audioUrl = `/objects/${audioFileName}`;
+          const uploadResult = await utapi.uploadFiles(fileForUpload);
+          
+          // Use ufsUrl instead of url (deprecated in v9)
+          const uploadedUrl = uploadResult?.data?.ufsUrl || uploadResult?.data?.url;
+          
+          if (!uploadResult || !uploadResult.data || !uploadedUrl) {
+            throw new Error("Failed to upload audio to UploadThing");
+          }
+          
+          audioUrl = uploadedUrl;
           console.log("Audio summary generated and uploaded:", audioUrl);
         } catch (audioError) {
           console.error("Error generating audio summary:", audioError);
@@ -607,7 +624,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       Example: {"id": "root", "label": "Main Topic", "children": [{"id": "1", "label": "Subtopic 1", "children": []}, ...]}`;
 
       const result = await genAI.models.generateContent({
-        model: "gemini-2.0-flash-exp",
+        model: "gemini-2.0-flash",
         contents: prompt,
       });
       const text = result.text || "";
@@ -655,6 +672,32 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     }
   });
 
+  app.delete("/api/chat/messages", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { materialId } = req.query;
+      
+      if (materialId) {
+        // Delete ALL messages for a specific material (including context messages)
+        await storage.deleteChatMessagesByMaterial(materialId as string);
+      } else {
+        // Delete all user messages (general conversation) - delete ALL messages without materialId
+        await db.delete(chatMessages)
+          .where(and(
+            eq(chatMessages.userId, userId),
+            isNull(chatMessages.materialId)
+          ));
+      }
+      
+      res.json({ message: "Conversation deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting chat messages:", error);
+      res.status(500).json({ message: error.message || "Failed to delete conversation" });
+    }
+  });
+
+  // Removed initialize-context endpoint - file upload is now handled automatically in chat message endpoint
+
   app.post("/api/chat/message", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -681,33 +724,136 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         ? await storage.getChatMessagesByMaterial(materialId)
         : [];
 
-      // Generate AI response using Gemini with streaming
-      let prompt = sanitizedContent;
+      // Get material and upload/retrieve Gemini file URI
+      let geminiFileUri: string | null = null;
+      let geminiMimeType: string | null = null;
+      let material: any = null;
+      
       if (materialId) {
-        const material = await storage.getStudyMaterial(materialId);
+        material = await storage.getStudyMaterial(materialId);
         if (material) {
-          prompt = `You are a helpful study assistant. The student is studying "${material.title}". 
-          Previous conversation: ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join("\n")}
-          Student question: ${sanitizedContent}
+          geminiFileUri = material.geminiFileUri || null;
           
-          Provide a helpful, educational response in plain text without any markdown formatting. Do not use asterisks, underscores, or other markdown syntax.`;
+          // If we don't have a Gemini file URI, upload the PDF now
+          if (!geminiFileUri) {
+            try {
+              const fileUrl = material.fileUrl;
+              if (fileUrl) {
+                console.log("Uploading PDF to Gemini File API...");
+                
+                // Download PDF from UploadThing
+                const pdfBuffer = await fetch(fileUrl).then((response) => {
+                  if (!response.ok) {
+                    throw new Error(`Failed to download PDF: ${response.statusText}`);
+                  }
+                  return response.arrayBuffer();
+                });
+
+                // Create a Blob from the PDF buffer
+                const fileBlob = new Blob([pdfBuffer], { type: 'application/pdf' });
+
+                // Upload to Gemini File API
+                const file = await genAI.files.upload({
+                  file: fileBlob,
+                  config: {
+                    displayName: material.fileName || material.title,
+                  },
+                });
+
+                // Wait for the file to be processed
+                if (!file.name) {
+                  throw new Error("Failed to get file name from Gemini upload response");
+                }
+                
+                let getFile = await genAI.files.get({ name: file.name });
+                while (getFile.state === 'PROCESSING') {
+                  getFile = await genAI.files.get({ name: file.name });
+                  console.log(`Current file status: ${getFile.state}`);
+                  await new Promise((resolve) => setTimeout(resolve, 5000));
+                }
+
+                if (getFile.state === 'FAILED') {
+                  throw new Error('File processing failed.');
+                }
+
+                geminiFileUri = getFile.uri || file.uri || null;
+                geminiMimeType = getFile.mimeType || file.mimeType || 'application/pdf';
+
+                if (!geminiFileUri) {
+                  throw new Error("Failed to get file URI from Gemini upload response");
+                }
+
+                // Store the Gemini file URI in the database
+                await db.update(studyMaterials)
+                  .set({ geminiFileUri })
+                  .where(eq(studyMaterials.id, material.id));
+                console.log("PDF uploaded to Gemini successfully, file URI:", geminiFileUri);
+              }
+            } catch (uploadError) {
+              console.error("Error uploading PDF to Gemini:", uploadError);
+              // Continue without PDF if upload fails - user will get an error message
+            }
+          } else {
+            geminiMimeType = 'application/pdf';
+            console.log("Using existing Gemini file URI:", geminiFileUri);
+          }
         }
-      } else {
-        prompt = `You are a helpful study assistant. Student question: ${sanitizedContent}
-        
-        Provide a helpful, educational response in plain text without any markdown formatting. Do not use asterisks, underscores, or other markdown syntax.`;
       }
+
+      // Build conversation history for Gemini - simple array format matching reference code
+      const contents: any[] = [];
+      
+      // Add conversation history (simple string format for streaming)
+      const recentHistory = history.slice(-15); // Get last 15 messages
+      for (const msg of recentHistory) {
+        if (msg.role === "user" || msg.role === "assistant") {
+          contents.push(msg.content);
+        }
+      }
+      
+      // Add current user message with file reference if we have a material
+      // Always include file in every message to ensure Gemini has access to it
+      if (materialId && geminiFileUri && material && geminiMimeType) {
+        // Include user's question
+        contents.push(sanitizedContent);
+        // Include file reference using createPartFromUri (matching reference code)
+        console.log("Adding file to message, URI:", geminiFileUri);
+        const fileContent = createPartFromUri(geminiFileUri, geminiMimeType);
+        contents.push(fileContent);
+      } else {
+        // Regular message without file
+        contents.push(sanitizedContent);
+      }
+      
+      console.log("Final contents array for streaming:", contents.length, "items", 
+        materialId ? `(with material: ${material?.title})` : "(no material)");
 
       // Send user message ID first
       res.write(`data: ${JSON.stringify({ type: "userMessage", message: userMessage })}\n\n`);
 
+      // Send "thinking" event to show loading state
+      res.write(`data: ${JSON.stringify({ type: "thinking" })}\n\n`);
+
       let fullResponse = "";
       
-      // Stream the AI response
-      const stream = await genAI.models.generateContentStream({
-        model: "gemini-2.0-flash-exp",
-        contents: prompt,
-      });
+      // Stream the AI response using conversation history
+      // For streaming with file references, use the simple array format (matching reference code)
+      let stream;
+      if (contents.length > 0) {
+        // Use the contents array directly (simple format for file references)
+        stream = await genAI.models.generateContentStream({
+          model: "gemini-2.0-flash",
+          contents: contents,
+        });
+      } else {
+        // No conversation history - use simple prompt
+        stream = await genAI.models.generateContentStream({
+          model: "gemini-2.0-flash",
+          contents: `You are a helpful study assistant. Student question: ${sanitizedContent}
+            
+            Provide a helpful, educational response in plain text without any markdown formatting. Do not use asterisks, underscores, or other markdown syntax.`,
+        });
+      }
 
       for await (const chunk of stream) {
         const text = chunk.text;

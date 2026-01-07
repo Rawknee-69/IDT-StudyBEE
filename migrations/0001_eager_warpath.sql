@@ -1,0 +1,1 @@
+ALTER TABLE "study_materials" DROP COLUMN "gemini_file_uri";

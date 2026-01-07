@@ -41,6 +41,8 @@ export const studyMaterials = pgTable("study_materials", {
   fileName: text("file_name").notNull(),
   fileUrl: text("file_url").notNull(), // Object storage URL
   fileSize: integer("file_size").notNull(), // in bytes
+  extractedText: text("extracted_text"), // Cached PDF text content for AI context
+  geminiFileUri: text("gemini_file_uri"), // Gemini File API URI for PDF context
   uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
 });
 
