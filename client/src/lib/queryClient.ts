@@ -41,10 +41,39 @@ export async function apiRequest(
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
+    credentials: "include",
   });
 
   await throwIfResNotOk(res);
   return res;
+}
+
+// Helper for authenticated GET requests
+export async function apiGet<T>(url: string): Promise<T> {
+  const token = await getClerkToken();
+  
+  if (!token) {
+    throw new Error("Authentication token not available");
+  }
+  
+  const headers: Record<string, string> = {
+    "Authorization": `Bearer ${token}`,
+  };
+  
+  const res = await fetch(url, {
+    headers,
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error("401: Unauthorized");
+    }
+    const errorText = await res.text();
+    throw new Error(`Request failed: ${errorText}`);
+  }
+
+  return res.json();
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";

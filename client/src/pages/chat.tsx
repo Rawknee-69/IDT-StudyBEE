@@ -39,6 +39,7 @@ export default function Chat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -53,6 +54,16 @@ export default function Chat() {
       return;
     }
   }, [isAuthenticated, authLoading, toast]);
+
+  // Cleanup: Cancel any pending requests on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
 
   const { data: materials } = useQuery<StudyMaterial[]>({
     queryKey: ["/api/study-materials"],
@@ -125,6 +136,15 @@ export default function Chat() {
   });
 
   const sendMessageWithStreaming = async (content: string) => {
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    // Create new AbortController for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    
     setIsStreaming(true);
     setStreamingMessage("");
     
@@ -158,6 +178,7 @@ export default function Chat() {
           "Authorization": `Bearer ${token}`,
         },
         credentials: "include",
+        signal: abortController.signal,
         body: JSON.stringify({
           content,
           materialId: selectedMaterial,
@@ -178,6 +199,12 @@ export default function Chat() {
       let buffer = "";
 
       while (true) {
+        // Check if request was aborted
+        if (abortController.signal.aborted) {
+          reader.cancel();
+          break;
+        }
+        
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -247,6 +274,11 @@ export default function Chat() {
         }
       }
     } catch (error: any) {
+      // Don't show error if request was aborted (component unmounted or new request started)
+      if (error.name === 'AbortError') {
+        return;
+      }
+      
       setIsStreaming(false);
       setStreamingMessage("");
       
@@ -267,6 +299,11 @@ export default function Chat() {
         description: error.message || "Failed to send message",
         variant: "destructive",
       });
+    } finally {
+      // Clear abort controller reference if this was the active request
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
     }
   };
 

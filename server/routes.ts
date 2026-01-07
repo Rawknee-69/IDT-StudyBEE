@@ -8,7 +8,7 @@ import { createPartFromUri, GoogleGenAI } from "@google/genai";
 import { generateAudioFromText } from "./deepgram";
 // objectStorage and setObjectAclPolicy no longer needed - using UploadThing instead
 import { sanitizeMarkdown, sanitizeUserInput, sanitizeForAudio, sanitizeMindMapNode } from "./textUtils";
-import { setupCollabWebSocket } from "./collabWebSocket";
+import { setupCollabWebSocket, notifySessionEnded } from "./collabWebSocket";
 import {
   insertStudyMaterialSchema,
   insertFlashcardSchema,
@@ -1115,6 +1115,28 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
   app.post("/api/collab/sessions", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
+      
+      // Ensure user exists in database before creating session
+      let user = await storage.getUser(userId);
+      if (!user) {
+        user = await storage.upsertUser({
+          id: userId,
+          email: req.user.email,
+          firstName: req.user.firstName || undefined,
+          lastName: req.user.lastName || undefined,
+          profileImageUrl: req.user.profileImageUrl || undefined,
+        });
+      } else {
+        // Update user info from Clerk if changed
+        user = await storage.upsertUser({
+          id: userId,
+          email: req.user.email,
+          firstName: req.user.firstName || undefined,
+          lastName: req.user.lastName || undefined,
+          profileImageUrl: req.user.profileImageUrl || undefined,
+        });
+      }
+      
       const sessionCode = Math.random().toString(36).substring(2, 12).toUpperCase();
       const sessionData = insertCollabSessionSchema.parse({
         ...req.body,
@@ -1194,6 +1216,10 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       }
       
       const endedSession = await storage.endCollabSession(req.params.id);
+      
+      // Notify all connected clients that the session has ended
+      notifySessionEnded(req.params.id);
+      
       res.json(endedSession);
     } catch (error) {
       console.error("Error ending collab session:", error);
@@ -1206,6 +1232,27 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     try {
       const userId = req.user.id;
       const sessionId = req.params.id;
+      
+      // Ensure user exists in database before joining
+      let user = await storage.getUser(userId);
+      if (!user) {
+        user = await storage.upsertUser({
+          id: userId,
+          email: req.user.email,
+          firstName: req.user.firstName || undefined,
+          lastName: req.user.lastName || undefined,
+          profileImageUrl: req.user.profileImageUrl || undefined,
+        });
+      } else {
+        // Update user info from Clerk if changed
+        user = await storage.upsertUser({
+          id: userId,
+          email: req.user.email,
+          firstName: req.user.firstName || undefined,
+          lastName: req.user.lastName || undefined,
+          profileImageUrl: req.user.profileImageUrl || undefined,
+        });
+      }
       
       const session = await storage.getCollabSession(sessionId);
       if (!session || !session.isActive) {

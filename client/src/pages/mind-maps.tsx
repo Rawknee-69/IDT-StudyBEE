@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Network, Loader2, Eye, Map as MapIcon } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, apiGet } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { MindMap, StudyMaterial } from "@shared/schema";
 import {
@@ -56,11 +56,10 @@ export default function MindMaps() {
       const url = selectedMaterial
         ? `/api/mind-maps?materialId=${selectedMaterial}`
         : "/api/mind-maps";
-      const response = await fetch(url, { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to fetch mind maps");
-      return response.json();
+      return apiGet<MindMap[]>(url);
     },
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !authLoading,
+    retry: false,
   });
 
   const generateMutation = useMutation({

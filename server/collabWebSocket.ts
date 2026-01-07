@@ -116,6 +116,7 @@ export function setupCollabWebSocket(server: Server) {
             await handleKickParticipant(ws, msg, userId);
             break;
           case "mute_all":
+          case "unmute_all":
             await handleMuteAll(ws, msg, userId);
             break;
           case "concentration_toggle":
@@ -196,6 +197,39 @@ function broadcast(sessionId: string, message: WSMessage, sender?: WebSocket) {
       client.send(messageStr);
     }
   });
+}
+
+// Broadcast to all clients in a session (including sender) - used for session-wide events
+function broadcastToAll(sessionId: string, message: WSMessage) {
+  const clients = sessionClients.get(sessionId);
+  if (!clients) return;
+
+  const messageStr = JSON.stringify(message);
+  clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(messageStr);
+    }
+  });
+}
+
+// Export function to notify all clients when session is ended
+export function notifySessionEnded(sessionId: string) {
+  broadcastToAll(sessionId, {
+    type: "session_ended",
+    sessionId,
+    data: { message: "The session has been ended by the host" },
+  });
+  
+  // Close all WebSocket connections for this session
+  const clients = sessionClients.get(sessionId);
+  if (clients) {
+    clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.close(1000, "Session ended");
+      }
+    });
+    sessionClients.delete(sessionId);
+  }
 }
 
 // Send message to specific client
@@ -533,17 +567,18 @@ async function handleMuteAll(ws: WebSocket, msg: WSMessage, userId: string) {
   const session = await storage.getCollabSession(sessionId);
   if (session && session.hostUserId === userId) {
     const participants = await storage.getActiveCollabParticipantsBySession(sessionId);
+    const shouldMute = msg.type === "mute_all";
     
     for (const participant of participants) {
       if (participant.userId !== userId) {
         await storage.updateCollabParticipant(participant.id, {
-          isMuted: true,
+          isMuted: shouldMute,
         });
       }
     }
 
     broadcast(sessionId, {
-      type: "all_muted",
+      type: shouldMute ? "all_muted" : "all_unmuted",
       sessionId,
       data: {},
     });

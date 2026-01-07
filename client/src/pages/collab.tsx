@@ -51,6 +51,11 @@ export default function Collab() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const [isAllMuted, setIsAllMuted] = useState(false);
+  const originalTitleRef = useRef<string>("");
+  const titleFlashIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const beepIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isFlashingRef = useRef<boolean>(false);
 
   // Fetch user's sessions
   const { data: mySessions } = useQuery<CollabSession[]>({
@@ -183,43 +188,94 @@ export default function Collab() {
 
   // WebSocket connection
   const connectWebSocket = async (sessionId: string) => {
-    if (wsRef.current) return;
-
-    // Get Clerk token for authentication
-    const token = await getToken();
-    if (!token) {
-      toast({
-        title: "Authentication Error",
-        description: "Please sign in to join collaboration sessions",
-        variant: "destructive",
-      });
+    if (wsRef.current) {
+      // If already connected, just ensure we're in the right session
       return;
     }
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    // Pass token as query parameter since WebSocket doesn't support custom headers in browser
-    const ws = new WebSocket(`${protocol}//${window.location.host}/collab-ws?token=${encodeURIComponent(token)}`);
-    wsRef.current = ws;
+    try {
+      // Get Clerk token for authentication
+      const token = await getToken();
+      if (!token) {
+        toast({
+          title: "Authentication Error",
+          description: "Please sign in to join collaboration sessions",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: "join", sessionId }));
-      fetchParticipants(sessionId);
-      fetchWhiteboard(sessionId);
-    };
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      // Construct WebSocket URL - use window.location.host which includes hostname:port
+      // This is the most reliable way as it preserves the exact host and port from the current page
+      const host = window.location.host || `${window.location.hostname || 'localhost'}:${window.location.port || (protocol === 'wss:' ? '443' : '80')}`;
+      
+      // Pass token as query parameter since WebSocket doesn't support custom headers in browser
+      const wsUrl = `${protocol}//${host}/collab-ws?token=${encodeURIComponent(token)}`;
+      console.log("[WebSocket] Connecting to:", wsUrl);
+      
+      // Validate URL before creating WebSocket
+      try {
+        new URL(wsUrl); // This will throw if URL is invalid
+      } catch (urlError) {
+        console.error("[WebSocket] Invalid URL constructed:", wsUrl, urlError);
+        throw new Error(`Invalid WebSocket URL: ${wsUrl}`);
+      }
+      
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      console.log("[WebSocket] Received message:", msg.type, msg);
-      handleWebSocketMessage(msg);
-    };
+      ws.onopen = () => {
+        try {
+          ws.send(JSON.stringify({ type: "join", sessionId }));
+          fetchParticipants(sessionId);
+          fetchWhiteboard(sessionId);
+        } catch (error) {
+          console.error("Error sending WebSocket join message:", error);
+        }
+      };
 
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-    };
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          console.log("[WebSocket] Received message:", msg.type, msg);
+          handleWebSocketMessage(msg);
+        } catch (error) {
+          console.error("Error parsing WebSocket message:", error);
+        }
+      };
 
-    ws.onclose = () => {
+      ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        // Don't show toast for connection errors as they're often transient
+      };
+
+      ws.onclose = (event) => {
+        wsRef.current = null;
+        // If closed with reason "Session ended", handle it gracefully
+        if (event.reason === "Session ended" || event.code === 1000) {
+          // Session was ended by host - state will be cleared by session_ended message handler
+          // But if message didn't arrive, clean up here as fallback
+          if (activeSession) {
+            setActiveSession(null);
+            setParticipants([]);
+            setChatMessages([]);
+            setWhiteboardContent({ elements: [] });
+            setIsAllMuted(false);
+            toast({
+              title: "Session Ended",
+              description: "The session has been ended by the host",
+              variant: "destructive",
+            });
+          }
+        } else if (event.code !== 1000 && event.code !== 1001) {
+          console.warn("WebSocket closed unexpectedly:", event.code, event.reason);
+        }
+      };
+    } catch (error) {
+      console.error("Error setting up WebSocket connection:", error);
       wsRef.current = null;
-    };
+    }
   };
 
   const disconnectWebSocket = () => {
@@ -265,6 +321,19 @@ export default function Collab() {
         if (activeSession) {
           console.log("Updating activeSession concentrationMode from", activeSession.concentrationMode, "to", msg.data.enabled);
           setActiveSession({ ...activeSession, concentrationMode: msg.data.enabled });
+          
+          // If concentration mode is disabled and tab is away, clean up intervals
+          if (!msg.data.enabled && document.hidden) {
+            if (titleFlashIntervalRef.current) {
+              clearInterval(titleFlashIntervalRef.current);
+              titleFlashIntervalRef.current = null;
+            }
+            if (beepIntervalRef.current) {
+              clearInterval(beepIntervalRef.current);
+              beepIntervalRef.current = null;
+            }
+            document.title = originalTitleRef.current;
+          }
         } else {
           console.log("No activeSession, cannot update concentration mode");
         }
@@ -281,6 +350,41 @@ export default function Collab() {
           description: msg.data.reason,
           variant: "destructive",
         });
+        break;
+      case "all_muted":
+        setIsAllMuted(true);
+        // Refresh participants to get updated mute status
+        if (activeSession) {
+          fetchParticipants(activeSession.id);
+        }
+        break;
+      case "all_unmuted":
+        setIsAllMuted(false);
+        // Refresh participants to get updated mute status
+        if (activeSession) {
+          fetchParticipants(activeSession.id);
+        }
+        break;
+      case "chat_error":
+        toast({
+          title: "Cannot Send Message",
+          description: msg.data.message || "You are muted and cannot send messages",
+          variant: "destructive",
+        });
+        break;
+      case "session_ended":
+        toast({
+          title: "Session Ended",
+          description: msg.data.message || "The session has been ended by the host",
+          variant: "destructive",
+        });
+        // Disconnect WebSocket and reset session state
+        disconnectWebSocket();
+        setActiveSession(null);
+        setParticipants([]);
+        setChatMessages([]);
+        setWhiteboardContent({ elements: [] });
+        setIsAllMuted(false);
         break;
     }
   };
@@ -451,6 +555,9 @@ export default function Collab() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     
+    // Clear canvas with black background
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     content.elements?.forEach((element: any) => {
@@ -506,28 +613,118 @@ export default function Collab() {
   const sendChatMessage = () => {
     if (!chatInput.trim() || !wsRef.current || !activeSession) return;
     
+    // Check if current user is muted
+    const currentParticipant = participants.find(p => p.userId === user?.id);
+    if (currentParticipant?.isMuted || isAllMuted) {
+      toast({
+        title: "Cannot Send Message",
+        description: "The owner has muted all participants. You cannot send messages.",
+        variant: "destructive",
+      });
+      setChatInput("");
+      return;
+    }
+    
     wsRef.current.send(JSON.stringify({
       type: "chat_message",
       sessionId: activeSession.id,
-      data: { content: chatInput },
+      data: { content: chatInput.trim() },
     }));
     
     setChatInput("");
   };
 
-  // Tab visibility detection
+  // Function to play beep sound
+  const playBeep = () => {
+    try {
+      // Create audio context for beep sound
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = 800; // Beep frequency
+      oscillator.type = "sine";
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (error) {
+      console.error("Error playing beep:", error);
+    }
+  };
+
+  // Tab visibility detection with concentration mode handling
   useEffect(() => {
+    // Store original title
+    if (!originalTitleRef.current) {
+      originalTitleRef.current = document.title;
+    }
+
     const handleVisibilityChange = () => {
-      if (document.hidden && activeSession && wsRef.current) {
-        wsRef.current.send(JSON.stringify({
-          type: "tab_switch",
-          sessionId: activeSession.id,
-        }));
+      const isConcentrationMode = activeSession?.concentrationMode;
+      
+      if (document.hidden) {
+        // Tab switched away
+        if (activeSession && wsRef.current) {
+          wsRef.current.send(JSON.stringify({
+            type: "tab_switch",
+            sessionId: activeSession.id,
+          }));
+        }
+
+        // If in concentration mode, flash title and play beep
+        if (isConcentrationMode) {
+          // Flash title
+          isFlashingRef.current = false;
+          titleFlashIntervalRef.current = setInterval(() => {
+            document.title = isFlashingRef.current ? originalTitleRef.current : "⚠️ Come Back ⚠️";
+            isFlashingRef.current = !isFlashingRef.current;
+          }, 500); // Flash every 500ms
+
+          // Play beep every minute
+          playBeep(); // Play immediately
+          beepIntervalRef.current = setInterval(() => {
+            playBeep();
+          }, 60000); // Every 60 seconds (1 minute)
+        }
+      } else {
+        // Tab came back
+        // Clear intervals
+        if (titleFlashIntervalRef.current) {
+          clearInterval(titleFlashIntervalRef.current);
+          titleFlashIntervalRef.current = null;
+        }
+        if (beepIntervalRef.current) {
+          clearInterval(beepIntervalRef.current);
+          beepIntervalRef.current = null;
+        }
+        
+        // Restore original title
+        document.title = originalTitleRef.current;
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      // Clean up intervals
+      if (titleFlashIntervalRef.current) {
+        clearInterval(titleFlashIntervalRef.current);
+        titleFlashIntervalRef.current = null;
+      }
+      if (beepIntervalRef.current) {
+        clearInterval(beepIntervalRef.current);
+        beepIntervalRef.current = null;
+      }
+      // Restore title on cleanup
+      document.title = originalTitleRef.current;
+    };
   }, [activeSession]);
 
   // Break timer countdown
@@ -552,6 +749,19 @@ export default function Collab() {
       disconnectWebSocket();
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
+      }
+      // Clean up title flash and beep intervals
+      if (titleFlashIntervalRef.current) {
+        clearInterval(titleFlashIntervalRef.current);
+        titleFlashIntervalRef.current = null;
+      }
+      if (beepIntervalRef.current) {
+        clearInterval(beepIntervalRef.current);
+        beepIntervalRef.current = null;
+      }
+      // Restore original title
+      if (originalTitleRef.current) {
+        document.title = originalTitleRef.current;
       }
     };
   }, []);
@@ -602,7 +812,7 @@ export default function Collab() {
   const muteAll = () => {
     if (wsRef.current && activeSession) {
       wsRef.current.send(JSON.stringify({
-        type: "mute_all",
+        type: isAllMuted ? "unmute_all" : "mute_all",
         sessionId: activeSession.id,
       }));
     }
@@ -648,15 +858,24 @@ export default function Collab() {
                   data-testid="button-toggle-concentration"
                 >
                   {activeSession.concentrationMode ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
-                  {activeSession.concentrationMode ? "Disable" : "Enable"} Focus Mode
+                  {activeSession.concentrationMode ? "Disable Concentration Toggle" : "Enable Concentration Toggle"}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={muteAll}
                   data-testid="button-mute-all"
                 >
-                  <VolumeX className="h-4 w-4 mr-2" />
-                  Mute All
+                  {isAllMuted ? (
+                    <>
+                      <Volume2 className="h-4 w-4 mr-2" />
+                      Unmute All
+                    </>
+                  ) : (
+                    <>
+                      <VolumeX className="h-4 w-4 mr-2" />
+                      Mute All
+                    </>
+                  )}
                 </Button>
               </>
             )}
@@ -751,7 +970,7 @@ export default function Collab() {
                 ref={canvasRef}
                 width={800}
                 height={500}
-                className="border rounded-md w-full h-full cursor-crosshair bg-white dark:bg-gray-900"
+                className="border rounded-md w-full h-full cursor-crosshair bg-black"
                 onMouseDown={startDrawing}
                 onMouseMove={draw}
                 onMouseUp={stopDrawing}
