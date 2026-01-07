@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -8,60 +9,67 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/lib/clerkAuth";
-import Landing from "@/pages/landing";
-import Dashboard from "@/pages/dashboard";
-import Profile from "@/pages/profile";
-import Materials from "@/pages/materials";
-import MaterialDetail from "@/pages/material-detail";
-import Chat from "@/pages/chat";
-import Flashcards from "@/pages/flashcards";
-import Quizzes from "@/pages/quizzes";
-import MindMaps from "@/pages/mind-maps";
-import Summaries from "@/pages/summaries";
-import AudioLibrary from "@/pages/audio-library";
-import Todos from "@/pages/todos";
-import Pomodoro from "@/pages/pomodoro";
-import Concentration from "@/pages/concentration";
-import Leaderboard from "@/pages/leaderboard";
-import Collab from "@/pages/collab";
-import NotFound from "@/pages/not-found";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
+
+// Lazy load all page components for better performance
+const Landing = lazy(() => import("@/pages/landing"));
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Profile = lazy(() => import("@/pages/profile"));
+const Materials = lazy(() => import("@/pages/materials"));
+const MaterialDetail = lazy(() => import("@/pages/material-detail"));
+const Chat = lazy(() => import("@/pages/chat"));
+const Flashcards = lazy(() => import("@/pages/flashcards"));
+const Quizzes = lazy(() => import("@/pages/quizzes"));
+const MindMaps = lazy(() => import("@/pages/mind-maps"));
+const Summaries = lazy(() => import("@/pages/summaries"));
+const AudioLibrary = lazy(() => import("@/pages/audio-library"));
+const Todos = lazy(() => import("@/pages/todos"));
+const Pomodoro = lazy(() => import("@/pages/pomodoro"));
+const Concentration = lazy(() => import("@/pages/concentration"));
+const Leaderboard = lazy(() => import("@/pages/leaderboard"));
+const Collab = lazy(() => import("@/pages/collab"));
+const NotFound = lazy(() => import("@/pages/not-found"));
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
-    return null;
+    return <LoadingSpinner />;
   }
 
   if (!isAuthenticated) {
     return (
-      <Switch>
-        <Route path="/" component={Landing} />
-        <Route component={NotFound} />
-      </Switch>
+      <Suspense fallback={<LoadingSpinner />}>
+        <Switch>
+          <Route path="/" component={Landing} />
+          <Route component={NotFound} />
+        </Switch>
+      </Suspense>
     );
   }
 
   return (
-    <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/dashboard" component={Dashboard} />
-      <Route path="/profile" component={Profile} />
-      <Route path="/materials/:id" component={MaterialDetail} />
-      <Route path="/materials" component={Materials} />
-      <Route path="/chat" component={Chat} />
-      <Route path="/flashcards" component={Flashcards} />
-      <Route path="/quizzes" component={Quizzes} />
-      <Route path="/mind-maps" component={MindMaps} />
-      <Route path="/summaries" component={Summaries} />
-      <Route path="/audio-library" component={AudioLibrary} />
-      <Route path="/todos" component={Todos} />
-      <Route path="/pomodoro" component={Pomodoro} />
-      <Route path="/concentration" component={Concentration} />
-      <Route path="/leaderboard" component={Leaderboard} />
-      <Route path="/collab" component={Collab} />
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<LoadingSpinner />}>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route path="/dashboard" component={Dashboard} />
+        <Route path="/profile" component={Profile} />
+        <Route path="/materials/:id" component={MaterialDetail} />
+        <Route path="/materials" component={Materials} />
+        <Route path="/chat" component={Chat} />
+        <Route path="/flashcards" component={Flashcards} />
+        <Route path="/quizzes" component={Quizzes} />
+        <Route path="/mind-maps" component={MindMaps} />
+        <Route path="/summaries" component={Summaries} />
+        <Route path="/audio-library" component={AudioLibrary} />
+        <Route path="/todos" component={Todos} />
+        <Route path="/pomodoro" component={Pomodoro} />
+        <Route path="/concentration" component={Concentration} />
+        <Route path="/leaderboard" component={Leaderboard} />
+        <Route path="/collab" component={Collab} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
@@ -73,13 +81,20 @@ function AppContent() {
     "--sidebar-width-icon": "3rem",
   };
 
+  if (isLoading) {
+    return (
+      <>
+        <Toaster />
+        <LoadingSpinner />
+      </>
+    );
+  }
+
   return (
     <>
-      {isLoading || !isAuthenticated ? (
-        <>
-          <Toaster />
-          <Router />
-        </>
+      <Toaster />
+      {!isAuthenticated ? (
+        <Router />
       ) : (
         <SidebarProvider style={style as React.CSSProperties}>
           <div className="flex h-screen w-full">
@@ -94,7 +109,6 @@ function AppContent() {
               </main>
             </div>
           </div>
-          <Toaster />
         </SidebarProvider>
       )}
     </>

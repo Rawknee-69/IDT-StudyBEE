@@ -237,6 +237,13 @@
 @layer base {
   * {
     @apply border-border;
+    /* Hide all scrollbars globally while maintaining scroll functionality */
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  
+  *::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari and Opera */
   }
 
   body {

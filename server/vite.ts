@@ -41,8 +41,14 @@ export async function setupVite(app: Express, server: Server) {
   });
 
   app.use(vite.middlewares);
-  app.use("*", async (req, res, next) => {
+  // Catch-all route for SPA - must be last and exclude API routes
+  app.get("*", async (req, res, next) => {
     const url = req.originalUrl;
+
+    // Skip API routes and static assets
+    if (url.startsWith("/api") || url.startsWith("/_") || url.includes(".")) {
+      return next();
+    }
 
     try {
       const clientTemplate = path.resolve(
@@ -79,7 +85,15 @@ export function serveStatic(app: Express) {
   app.use(express.static(distPath));
 
   // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
+  // Exclude API routes and static assets
+  app.get("*", (req, res) => {
+    const url = req.originalUrl;
+    
+    // Skip API routes and static assets
+    if (url.startsWith("/api") || url.startsWith("/_") || url.includes(".")) {
+      return res.status(404).json({ message: "Not found" });
+    }
+    
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
