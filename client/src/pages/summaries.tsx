@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Sparkles, FileText, Loader2, Volume2, VolumeX, FileStack, Play, Pause, RotateCcw } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getClerkToken } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { Summary, StudyMaterial } from "@shared/schema";
 import {
@@ -195,7 +195,15 @@ export default function Summaries() {
     queryKey: ["/api/summaries", selectedMaterial],
     queryFn: async () => {
       if (!selectedMaterial) return null;
+      const token = await getClerkToken();
+      const headers: Record<string, string> = {};
+      
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
       const response = await fetch(`/api/summaries?materialId=${selectedMaterial}`, {
+        headers,
         credentials: "include",
       });
       if (!response.ok) throw new Error("Failed to fetch summary");

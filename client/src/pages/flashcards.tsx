@@ -13,7 +13,7 @@ import {
   FileText,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getClerkToken } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { Flashcard, StudyMaterial } from "@shared/schema";
 import {
@@ -71,10 +71,20 @@ export default function Flashcards() {
   const { data: flashcards, isLoading: flashcardsLoading } = useQuery<Flashcard[]>({
     queryKey: ["/api/flashcards", selectedMaterial],
     queryFn: async () => {
+      const token = await getClerkToken();
+      const headers: Record<string, string> = {};
+      
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
       const url = selectedMaterial 
         ? `/api/flashcards?materialId=${selectedMaterial}`
         : "/api/flashcards";
-      const response = await fetch(url, { credentials: "include" });
+      const response = await fetch(url, { 
+        headers,
+        credentials: "include" 
+      });
       if (!response.ok) throw new Error("Failed to fetch flashcards");
       return response.json();
     },

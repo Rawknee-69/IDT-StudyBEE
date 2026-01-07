@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getClerkToken } from "@/lib/queryClient";
 import { useAuth } from "@/lib/clerkAuth";
 import { useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { useToast } from "@/hooks/use-toast";
@@ -61,9 +61,18 @@ export default function Collab() {
   // Create session mutation
   const createSessionMutation = useMutation({
     mutationFn: async (title: string) => {
+      const token = await getClerkToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
       const response = await fetch("/api/collab/sessions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({ title }),
       });
@@ -95,7 +104,15 @@ export default function Collab() {
   // Join session mutation
   const joinSessionMutation = useMutation({
     mutationFn: async (code: string) => {
+      const token = await getClerkToken();
+      const headers: Record<string, string> = {};
+      
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
       const sessionRes = await fetch(`/api/collab/sessions/code/${code}`, {
+        headers,
         credentials: "include",
       });
       if (!sessionRes.ok) {
@@ -105,6 +122,7 @@ export default function Collab() {
       
       const joinRes = await fetch(`/api/collab/sessions/${session.id}/join`, {
         method: "POST",
+        headers,
         credentials: "include",
       });
       if (!joinRes.ok) {
@@ -135,8 +153,16 @@ export default function Collab() {
   // End session mutation
   const endSessionMutation = useMutation({
     mutationFn: async (sessionId: string) => {
+      const token = await getClerkToken();
+      const headers: Record<string, string> = {};
+      
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
       const response = await fetch(`/api/collab/sessions/${sessionId}/end`, {
         method: "POST",
+        headers,
         credentials: "include",
       });
       if (!response.ok) {
@@ -261,7 +287,15 @@ export default function Collab() {
 
   const fetchParticipants = async (sessionId: string) => {
     try {
+      const token = await getClerkToken();
+      const headers: Record<string, string> = {};
+      
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
       const response = await fetch(`/api/collab/sessions/${sessionId}/participants`, {
+        headers,
         credentials: "include",
       });
       if (response.ok) {
@@ -275,7 +309,15 @@ export default function Collab() {
 
   const fetchWhiteboard = async (sessionId: string) => {
     try {
+      const token = await getClerkToken();
+      const headers: Record<string, string> = {};
+      
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
       const response = await fetch(`/api/collab/sessions/${sessionId}/whiteboard`, {
+        headers,
         credentials: "include",
       });
       if (response.ok) {
@@ -291,14 +333,30 @@ export default function Collab() {
   const saveWhiteboard = async (content: any) => {
     if (!activeSession) return;
     try {
+      const token = await getClerkToken();
+      const headers: Record<string, string> = {};
+      
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
       const wbRes = await fetch(`/api/collab/sessions/${activeSession.id}/whiteboard`, {
+        headers,
         credentials: "include",
       });
       if (wbRes.ok) {
         const whiteboard = await wbRes.json();
+        const patchHeaders: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        
+        if (token) {
+          patchHeaders["Authorization"] = `Bearer ${token}`;
+        }
+        
         await fetch(`/api/collab/whiteboards/${whiteboard.id}`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: patchHeaders,
           credentials: "include",
           body: JSON.stringify({ content }),
         });

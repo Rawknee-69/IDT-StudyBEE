@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Play, FileText, Trophy, AlertTriangle, Target } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getClerkToken } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { Quiz, QuizWithQuestions, QuizAttempt, StudyMaterial } from "@shared/schema";
 import {
@@ -78,10 +78,20 @@ export default function Quizzes() {
   const { data: quizzes } = useQuery<QuizWithQuestions[]>({
     queryKey: ["/api/quizzes", selectedMaterial],
     queryFn: async () => {
+      const token = await getClerkToken();
+      const headers: Record<string, string> = {};
+      
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
       const url = selectedMaterial 
         ? `/api/quizzes?materialId=${selectedMaterial}`
         : "/api/quizzes";
-      const response = await fetch(url, { credentials: "include" });
+      const response = await fetch(url, { 
+        headers,
+        credentials: "include" 
+      });
       if (!response.ok) throw new Error("Failed to fetch quizzes");
       return response.json();
     },

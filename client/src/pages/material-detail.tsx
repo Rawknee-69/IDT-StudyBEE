@@ -6,7 +6,7 @@ import { ArrowLeft, Download, FileText, Volume2, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/clerkAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getClerkToken } from "@/lib/queryClient";
 
 interface StudyMaterial {
   id: string;
@@ -54,7 +54,15 @@ export default function MaterialDetail() {
   const { data: summary, isLoading: summaryLoading } = useQuery<Summary>({
     queryKey: ["/api/summaries", "material", id],
     queryFn: async () => {
+      const token = await getClerkToken();
+      const headers: Record<string, string> = {};
+      
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
       const response = await fetch(`/api/summaries?materialId=${id}`, {
+        headers,
         credentials: "include",
       });
       if (!response.ok) {
