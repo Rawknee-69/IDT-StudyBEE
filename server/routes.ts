@@ -27,9 +27,10 @@ import {
   insertCollabActivitySchema,
   chatMessages,
   studyMaterials,
+  type ChatMessage,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, asc } from "drizzle-orm";
 
 // Initialize Gemini AI
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
@@ -661,9 +662,24 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       const userId = req.user.id;
       const { materialId } = req.query;
       
-      const messages = materialId
-        ? await storage.getChatMessagesByMaterial(materialId as string)
-        : await storage.getChatMessagesByUser(userId);
+      // Completely isolated sessions:
+      // - Material-specific chat: only get messages for that material
+      // - General chat: only get messages where materialId IS NULL
+      let messages: ChatMessage[];
+      if (materialId) {
+        // Material-specific chat - only this material's messages
+        messages = await storage.getChatMessagesByMaterial(materialId as string);
+      } else {
+        // General chat - only messages without materialId (completely separate)
+        messages = await db
+          .select()
+          .from(chatMessages)
+          .where(and(
+            eq(chatMessages.userId, userId),
+            isNull(chatMessages.materialId)
+          ))
+          .orderBy(asc(chatMessages.createdAt));
+      }
       
       res.json(messages);
     } catch (error) {
@@ -719,10 +735,24 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      // Get conversation history
-      const history = materialId
-        ? await storage.getChatMessagesByMaterial(materialId)
-        : [];
+      // Get conversation history - completely isolated sessions
+      // General chat (materialId = null) only gets general messages
+      // Material-specific chat only gets that material's messages
+      let history: ChatMessage[] = [];
+      if (materialId) {
+        // Material-specific chat - only get messages for this specific material
+        history = await storage.getChatMessagesByMaterial(materialId);
+      } else {
+        // General chat - only get messages where materialId IS NULL
+        history = await db
+          .select()
+          .from(chatMessages)
+          .where(and(
+            eq(chatMessages.userId, userId),
+            isNull(chatMessages.materialId)
+          ))
+          .orderBy(asc(chatMessages.createdAt));
+      }
 
       // Get material and upload/retrieve Gemini file URI
       let geminiFileUri: string | null = null;
