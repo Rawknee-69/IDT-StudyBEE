@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft, Download, FileText, Volume2, Loader2 } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/lib/clerkAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";

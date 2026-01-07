@@ -27,7 +27,8 @@ import {
   LogOut,
 } from "lucide-react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/lib/clerkAuth";
+import { SignOutButton } from "@clerk/clerk-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const studyItems = [
@@ -155,12 +156,12 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild data-testid="sidebar-logout">
-              <a href="/api/logout" className="text-destructive">
+            <SignOutButton>
+              <SidebarMenuButton className="text-destructive" data-testid="sidebar-logout">
                 <LogOut />
                 <span>Sign Out</span>
-              </a>
-            </SidebarMenuButton>
+              </SidebarMenuButton>
+            </SignOutButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

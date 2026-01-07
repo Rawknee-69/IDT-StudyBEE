@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/lib/clerkAuth";
+import { useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -28,6 +29,7 @@ interface ChatMessage {
 
 export default function Collab() {
   const { user } = useAuth();
+  const { getToken } = useClerkAuth();
   const { toast } = useToast();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
@@ -70,11 +72,11 @@ export default function Collab() {
       }
       return response.json();
     },
-    onSuccess: (session: CollabSession) => {
+    onSuccess: async (session: CollabSession) => {
       setActiveSession(session);
       setCreateDialogOpen(false);
       setSessionTitle("");
-      connectWebSocket(session.id);
+      await connectWebSocket(session.id);
       queryClient.invalidateQueries({ queryKey: ["/api/collab/my-sessions"] });
       toast({
         title: "Session Created",
@@ -111,11 +113,11 @@ export default function Collab() {
       
       return session;
     },
-    onSuccess: (session: CollabSession) => {
+    onSuccess: async (session: CollabSession) => {
       setActiveSession(session);
       setJoinDialogOpen(false);
       setSessionCode("");
-      connectWebSocket(session.id);
+      await connectWebSocket(session.id);
       toast({
         title: "Joined Session",
         description: `You've joined "${session.title}"`,
@@ -154,11 +156,23 @@ export default function Collab() {
   });
 
   // WebSocket connection
-  const connectWebSocket = (sessionId: string) => {
+  const connectWebSocket = async (sessionId: string) => {
     if (wsRef.current) return;
 
+    // Get Clerk token for authentication
+    const token = await getToken();
+    if (!token) {
+      toast({
+        title: "Authentication Error",
+        description: "Please sign in to join collaboration sessions",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}/collab-ws`);
+    // Pass token as query parameter since WebSocket doesn't support custom headers in browser
+    const ws = new WebSocket(`${protocol}//${window.location.host}/collab-ws?token=${encodeURIComponent(token)}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -940,9 +954,9 @@ export default function Collab() {
                 {session.isActive && (
                   <Button
                     size="sm"
-                    onClick={() => {
+                    onClick={async () => {
                       setActiveSession(session);
-                      connectWebSocket(session.id);
+                      await connectWebSocket(session.id);
                     }}
                     data-testid={`button-rejoin-${session.id}`}
                   >

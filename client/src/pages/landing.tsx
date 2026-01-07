@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { SignInButton } from "@clerk/clerk-react";
 import { BookOpen, Brain, Target, Trophy, Timer, Zap } from "lucide-react";
 
 export default function Landing() {
@@ -14,9 +15,9 @@ export default function Landing() {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <Button asChild data-testid="button-login">
-              <a href="/api/login">Sign In</a>
-            </Button>
+            <SignInButton mode="modal">
+              <Button data-testid="button-login">Sign In</Button>
+            </SignInButton>
           </div>
         </div>
       </header>
@@ -32,9 +33,11 @@ export default function Landing() {
               Transform your PDFs into flashcards, quizzes, mind maps, and summaries with cutting-edge AI. Track your progress, compete on leaderboards, and master your studies.
             </p>
             <div className="flex flex-wrap gap-4 justify-center">
-              <Button size="lg" asChild className="text-lg" data-testid="button-get-started">
-                <a href="/api/login">Get Started Free</a>
-              </Button>
+              <SignInButton mode="modal">
+                <Button size="lg" className="text-lg" data-testid="button-get-started">
+                  Get Started Free
+                </Button>
+              </SignInButton>
               <Button size="lg" variant="outline" className="text-lg" asChild data-testid="button-learn-more">
                 <a href="#features">Learn More</a>
               </Button>
@@ -123,8 +126,8 @@ export default function Landing() {
               <h4 className="font-heading font-semibold mb-3">Product</h4>
               <ul className="space-y-2 text-muted-foreground">
                 <li><a href="#features" className="hover-elevate">Features</a></li>
-                <li><a href="/api/login" className="hover-elevate">Pricing</a></li>
-                <li><a href="/api/login" className="hover-elevate">Dashboard</a></li>
+                <li><a href="#pricing" className="hover-elevate">Pricing</a></li>
+                <li><SignInButton mode="modal"><a href="#" className="hover-elevate" onClick={(e) => e.preventDefault()}>Dashboard</a></SignInButton></li>
               </ul>
             </div>
             <div>

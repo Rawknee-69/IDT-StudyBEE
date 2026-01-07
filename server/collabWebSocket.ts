@@ -2,8 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { Server } from "http";
 import type { IncomingMessage } from "http";
 import { storage } from "./storage";
-import { parse as parseCookie } from "cookie";
-import { getSessionStore } from "./replitAuth";
+import { clerkClient, verifyToken } from "@clerk/clerk-sdk-node";
 
 // WebSocket message types
 export interface WSMessage {
@@ -27,26 +26,33 @@ export function setupCollabWebSocket(server: Server) {
     path: "/collab-ws",
     verifyClient: async (info, callback) => {
       try {
-        // Extract session cookie
-        const cookies = parseCookie(info.req.headers.cookie || "");
-        const sessionId = cookies["connect.sid"]?.split("s:")[1]?.split(".")[0];
+        // Extract token from query parameter or Authorization header
+        const url = new URL(info.req.url || "", `http://${info.req.headers.host}`);
+        const tokenFromQuery = url.searchParams.get("token");
+        const authHeader = info.req.headers.authorization;
         
-        if (!sessionId) {
+        const token = tokenFromQuery || (authHeader?.startsWith("Bearer ") ? authHeader.replace("Bearer ", "") : null);
+        
+        if (!token) {
           callback(false, 401, "Unauthorized");
           return;
         }
-
-        // Verify session
-        const sessionStore = getSessionStore();
-        sessionStore.get(sessionId, (err: any, session: any) => {
-          if (err || !session || !session.passport?.user?.claims?.sub) {
-            callback(false, 401, "Unauthorized");
-            return;
-          }
-          
-          // Session is valid
-          callback(true);
+        
+        // Verify JWT token with Clerk
+        const payload = await verifyToken(token, {
+          secretKey: process.env.CLERK_SECRET_KEY!,
         });
+        
+        if (!payload || !payload.sub) {
+          callback(false, 401, "Unauthorized");
+          return;
+        }
+        
+        // Store userId in request for later use
+        (info.req as any).userId = payload.sub;
+        
+        // Session is valid
+        callback(true);
       } catch (error) {
         console.error("WebSocket auth error:", error);
         callback(false, 500, "Internal Server Error");
@@ -57,24 +63,9 @@ export function setupCollabWebSocket(server: Server) {
   wss.on("connection", async (ws: WebSocket, req: IncomingMessage) => {
     console.log("New WebSocket connection established");
 
-    // Authenticate user from session
-    const cookies = parseCookie(req.headers.cookie || "");
-    const sessionId = cookies["connect.sid"]?.split("s:")[1]?.split(".")[0];
+    // Get authenticated userId from request (set in verifyClient)
+    const authenticatedUserId = (req as any).userId;
     
-    let authenticatedUserId: string | null = null;
-    
-    if (sessionId) {
-      const sessionStore = getSessionStore();
-      await new Promise((resolve) => {
-        sessionStore.get(sessionId, (err: any, session: any) => {
-          if (!err && session?.passport?.user?.claims?.sub) {
-            authenticatedUserId = session.passport.user.claims.sub;
-          }
-          resolve(null);
-        });
-      });
-    }
-
     if (!authenticatedUserId) {
       ws.close(1008, "Unauthorized");
       return;

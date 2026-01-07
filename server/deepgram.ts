@@ -1,12 +1,5 @@
-import { createClient } from "@deepgram/sdk";
-
-const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
-
-if (!DEEPGRAM_API_KEY) {
-  throw new Error("DEEPGRAM_API_KEY environment variable is required");
-}
-
-const deepgram = createClient(DEEPGRAM_API_KEY);
+// Deepgram text-to-speech module
+// API key is checked only when generateAudioFromText is called
 
 export interface TextToSpeechOptions {
   text: string;
@@ -90,6 +83,15 @@ function combineWavBuffers(buffers: Buffer[]): Buffer {
 }
 
 async function generateAudioForSingleChunk(text: string, model: string): Promise<Buffer> {
+  // Dynamic import to avoid loading at module initialization
+  const { createClient } = await import("@deepgram/sdk");
+  
+  const apiKey = process.env.DEEPGRAM_API_KEY;
+  if (!apiKey || apiKey === "your_deepgram_api_key_here") {
+    throw new Error("DEEPGRAM_API_KEY environment variable is required. Please set it in your .env file.");
+  }
+  
+  const deepgram = createClient(apiKey);
   const response = await deepgram.speak.request(
     { text },
     {

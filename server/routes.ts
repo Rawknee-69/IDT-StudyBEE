@@ -1,9 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated } from "./clerkAuth";
 import multer from "multer";
 import { GoogleGenAI } from "@google/genai";
+// Import Deepgram function - will only fail when actually called if API key is missing
 import { generateAudioFromText } from "./deepgram";
 import { objectStorage } from "./objectStorage";
 import { setObjectAclPolicy } from "./objectAcl";
@@ -40,8 +41,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const userId = req.user.id;
+      
+      // Upsert user in database if not exists
+      let user = await storage.getUser(userId);
+      if (!user) {
+        user = await storage.upsertUser({
+          id: userId,
+          email: req.user.email,
+          firstName: req.user.firstName || undefined,
+          lastName: req.user.lastName || undefined,
+          profileImageUrl: req.user.profileImageUrl || undefined,
+        });
+      } else {
+        // Update user info from Clerk if changed
+        user = await storage.upsertUser({
+          id: userId,
+          email: req.user.email,
+          firstName: req.user.firstName || undefined,
+          lastName: req.user.lastName || undefined,
+          profileImageUrl: req.user.profileImageUrl || undefined,
+        });
+      }
+      
       res.json(user);
     } catch (error) {
       console.error("Error fetching user:", error);
@@ -52,7 +74,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User profile routes
   app.patch("/api/user/profile", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const profileData = updateUserProfileSchema.parse(req.body);
       const updatedUser = await storage.updateUserProfile(userId, profileData);
       res.json(updatedUser);
@@ -65,7 +87,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Study Materials routes
   app.get("/api/study-materials", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const materials = await storage.getStudyMaterialsByUser(userId);
       res.json(materials);
     } catch (error) {
@@ -81,7 +103,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Study material not found" });
       }
       // Verify ownership
-      if (material.userId !== req.user.claims.sub) {
+      if (material.userId !== req.user.id) {
         return res.status(403).json({ message: "Forbidden" });
       }
       res.json(material);
@@ -93,7 +115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/study-materials/upload", isAuthenticated, upload.single("file"), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const file = req.file;
       
       if (!file) {
@@ -156,7 +178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/objects/:objectPath(*)", isAuthenticated, async (req: any, res) => {
-    const userId = req.user?.claims?.sub;
+    const userId = req.user?.id;
     const { ObjectStorageService, ObjectNotFoundError } = await import("./objectStorage");
     const { ObjectPermission } = await import("./objectAcl");
     
@@ -188,7 +210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Study material not found" });
       }
       // Verify ownership
-      if (material.userId !== req.user.claims.sub) {
+      if (material.userId !== req.user.id) {
         return res.status(403).json({ message: "Forbidden" });
       }
       await storage.deleteStudyMaterial(req.params.id);
@@ -202,7 +224,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Flashcard routes
   app.get("/api/flashcards", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { materialId } = req.query;
       
       const flashcards = materialId
@@ -218,7 +240,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/flashcards/generate", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { materialId, count = 10 } = req.body;
 
       const material = await storage.getStudyMaterial(materialId);
@@ -268,7 +290,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/flashcards", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const flashcardData = insertFlashcardSchema.parse({ ...req.body, userId });
       const flashcard = await storage.createFlashcard(flashcardData);
       res.json(flashcard);
@@ -281,7 +303,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/flashcards/:id", isAuthenticated, async (req: any, res) => {
     try {
       const flashcard = await storage.getFlashcard(req.params.id);
-      if (!flashcard || flashcard.userId !== req.user.claims.sub) {
+      if (!flashcard || flashcard.userId !== req.user.id) {
         return res.status(404).json({ message: "Flashcard not found" });
       }
       await storage.deleteFlashcard(req.params.id);
@@ -295,7 +317,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Quiz routes
   app.get("/api/quizzes", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { materialId } = req.query;
       
       const quizzes = materialId
@@ -312,7 +334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/quizzes/:id", isAuthenticated, async (req: any, res) => {
     try {
       const quiz = await storage.getQuiz(req.params.id);
-      if (!quiz || quiz.userId !== req.user.claims.sub) {
+      if (!quiz || quiz.userId !== req.user.id) {
         return res.status(404).json({ message: "Quiz not found" });
       }
       res.json(quiz);
@@ -324,7 +346,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/quizzes/generate", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { materialId, questionCount = 10 } = req.body;
 
       const material = await storage.getStudyMaterial(materialId);
@@ -378,7 +400,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Quiz Attempt routes
   app.get("/api/quiz-attempts", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const attempts = await storage.getQuizAttemptsByUser(userId);
       res.json(attempts);
     } catch (error) {
@@ -389,7 +411,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/quiz-attempts", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const attemptData = insertQuizAttemptSchema.parse({ ...req.body, userId });
       
       const attempt = await storage.createQuizAttempt(attemptData);
@@ -415,7 +437,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Summary routes
   app.get("/api/summaries", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { materialId } = req.query;
       
       if (materialId) {
@@ -433,7 +455,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/summaries/generate", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { materialId } = req.body;
 
       const material = await storage.getStudyMaterial(materialId);
@@ -487,40 +509,46 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       // Generate audio from the summary using Deepgram
       // Text will be automatically chunked if it exceeds Deepgram's 2000 char limit
       let audioUrl: string | null = null;
-      try {
-        console.log("Generating audio summary with Deepgram...");
-        
-        // Sanitize content for audio - removes markdown and converts symbols to readable text
-        const audioText = sanitizeForAudio(content);
-        console.log("Text sanitized for audio, length:", audioText.length);
-        
-        const audioBuffer = await generateAudioFromText({ 
-          text: audioText,
-          model: "aura-asteria-en" // Natural, clear voice for educational content
-        });
+      
+      // Only generate audio if Deepgram API key is configured
+      if (process.env.DEEPGRAM_API_KEY && process.env.DEEPGRAM_API_KEY !== "your_deepgram_api_key_here") {
+        try {
+          console.log("Generating audio summary with Deepgram...");
+          
+          // Sanitize content for audio - removes markdown and converts symbols to readable text
+          const audioText = sanitizeForAudio(content);
+          console.log("Text sanitized for audio, length:", audioText.length);
+          
+          const audioBuffer = await generateAudioFromText({ 
+            text: audioText,
+            model: "aura-asteria-en" // Natural, clear voice for educational content
+          });
 
-        console.log("Audio buffer generated, size:", audioBuffer.length, "bytes");
+          console.log("Audio buffer generated, size:", audioBuffer.length, "bytes");
 
-        // Upload audio to object storage
-        const audioFileName = `summaries/audio_${materialId}_${Date.now()}.wav`;
-        console.log("Uploading audio to:", audioFileName);
-        
-        await objectStorage.uploadFile(audioFileName, audioBuffer, "audio/wav");
-        console.log("Audio uploaded successfully");
-        
-        // Set ACL policy so user can access the audio
-        const audioFile = await objectStorage.getObjectEntityFile(`/objects/${audioFileName}`);
-        await setObjectAclPolicy(audioFile, {
-          owner: userId,
-          visibility: "private"
-        });
-        
-        audioUrl = `/objects/${audioFileName}`;
-        console.log("Audio summary generated and uploaded:", audioUrl);
-      } catch (audioError) {
-        console.error("Error generating audio summary:", audioError);
-        console.error("Audio error stack:", audioError instanceof Error ? audioError.stack : "");
-        // Continue without audio if generation fails
+          // Upload audio to object storage
+          const audioFileName = `summaries/audio_${materialId}_${Date.now()}.wav`;
+          console.log("Uploading audio to:", audioFileName);
+          
+          await objectStorage.uploadFile(audioFileName, audioBuffer, "audio/wav");
+          console.log("Audio uploaded successfully");
+          
+          // Set ACL policy so user can access the audio
+          const audioFile = await objectStorage.getObjectEntityFile(`/objects/${audioFileName}`);
+          await setObjectAclPolicy(audioFile, {
+            owner: userId,
+            visibility: "private"
+          });
+          
+          audioUrl = `/objects/${audioFileName}`;
+          console.log("Audio summary generated and uploaded:", audioUrl);
+        } catch (audioError) {
+          console.error("Error generating audio summary:", audioError);
+          console.error("Audio error stack:", audioError instanceof Error ? audioError.stack : "");
+          // Continue without audio if generation fails
+        }
+      } else {
+        console.log("Deepgram API key not configured, skipping audio generation");
       }
 
       // Save or update summary in database with audio URL
@@ -548,7 +576,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
   // Mind Map routes
   app.get("/api/mind-maps", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { materialId } = req.query;
       
       const mindMaps = materialId
@@ -564,7 +592,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
 
   app.post("/api/mind-maps/generate", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { materialId } = req.body;
 
       const material = await storage.getStudyMaterial(materialId);
@@ -613,7 +641,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
   // Chat routes
   app.get("/api/chat/messages", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { materialId } = req.query;
       
       const messages = materialId
@@ -629,7 +657,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
 
   app.post("/api/chat/message", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { materialId, content } = req.body;
 
       // Sanitize user input
@@ -711,7 +739,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
   // Study Session routes
   app.get("/api/study-sessions", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const sessions = await storage.getStudySessionsByUser(userId);
       res.json(sessions);
     } catch (error) {
@@ -722,7 +750,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
 
   app.post("/api/study-sessions", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const sessionData = insertStudySessionSchema.parse({ ...req.body, userId });
       const session = await storage.createStudySession(sessionData);
       res.json(session);
@@ -735,7 +763,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
   app.patch("/api/study-sessions/:id", isAuthenticated, async (req: any, res) => {
     try {
       const session = await storage.getStudySession(req.params.id);
-      if (!session || session.userId !== req.user.claims.sub) {
+      if (!session || session.userId !== req.user.id) {
         return res.status(404).json({ message: "Study session not found" });
       }
 
@@ -744,7 +772,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
 
       // Update user stats if session ended
       if (updates.endTime && updates.duration) {
-        const user = await storage.getUser(req.user.claims.sub);
+        const user = await storage.getUser(req.user.id);
         if (user) {
           const totalStudyTime = user.totalStudyTime + updates.duration;
           
@@ -767,7 +795,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
             }
           }
 
-          await storage.updateUserStats(req.user.claims.sub, {
+          await storage.updateUserStats(req.user.id, {
             totalStudyTime,
             currentStreak,
             longestStreak: Math.max(currentStreak, user.longestStreak),
@@ -786,7 +814,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
   // Todo routes
   app.get("/api/todos", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const todos = await storage.getTodosByUser(userId);
       res.json(todos);
     } catch (error) {
@@ -797,7 +825,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
 
   app.post("/api/todos", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const todoData = insertTodoSchema.parse({ ...req.body, userId });
       const todo = await storage.createTodo(todoData);
       res.json(todo);
@@ -810,7 +838,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
   app.patch("/api/todos/:id", isAuthenticated, async (req: any, res) => {
     try {
       const todo = await storage.getTodo(req.params.id);
-      if (!todo || todo.userId !== req.user.claims.sub) {
+      if (!todo || todo.userId !== req.user.id) {
         return res.status(404).json({ message: "Todo not found" });
       }
       const updatedTodo = await storage.updateTodo(req.params.id, req.body);
@@ -824,7 +852,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
   app.delete("/api/todos/:id", isAuthenticated, async (req: any, res) => {
     try {
       const todo = await storage.getTodo(req.params.id);
-      if (!todo || todo.userId !== req.user.claims.sub) {
+      if (!todo || todo.userId !== req.user.id) {
         return res.status(404).json({ message: "Todo not found" });
       }
       await storage.deleteTodo(req.params.id);
@@ -838,7 +866,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
   // Pomodoro routes
   app.get("/api/pomodoro-sessions", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const sessions = await storage.getPomodoroSessionsByUser(userId);
       res.json(sessions);
     } catch (error) {
@@ -849,7 +877,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
 
   app.post("/api/pomodoro-sessions", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const sessionData = insertPomodoroSessionSchema.parse({ ...req.body, userId });
       const session = await storage.createPomodoroSession(sessionData);
       res.json(session);
@@ -910,7 +938,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
   // Collaboration Session routes
   app.post("/api/collab/sessions", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const sessionCode = Math.random().toString(36).substring(2, 12).toUpperCase();
       const sessionData = insertCollabSessionSchema.parse({
         ...req.body,
@@ -967,7 +995,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
 
   app.get("/api/collab/my-sessions", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const sessions = await storage.getCollabSessionsByHost(userId);
       res.json(sessions);
     } catch (error) {
@@ -978,7 +1006,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
 
   app.post("/api/collab/sessions/:id/end", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const session = await storage.getCollabSession(req.params.id);
       
       if (!session) {
@@ -1000,7 +1028,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
   // Collaboration Participant routes
   app.post("/api/collab/sessions/:id/join", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const sessionId = req.params.id;
       
       const session = await storage.getCollabSession(sessionId);
