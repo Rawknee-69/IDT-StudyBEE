@@ -21,9 +21,9 @@ type UserStats = {
   profileImageUrl: string | null;
   degree: string | null;
   className: string | null;
-  totalStudyTime: number; // in minutes
-  currentStreak: number; // days
-  longestStreak: number; // days
+  totalStudyTime: number; 
+  currentStreak: number; 
+  longestStreak: number; 
   totalQuizScore: number;
   quizzesCompleted: number;
 };
@@ -32,7 +32,7 @@ export default function Dashboard() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading, user } = useAuth();
 
-  // Fetch user stats from database (includes totalStudyTime, currentStreak, etc.)
+  
   const { data: userStats, isLoading: userStatsLoading } = useQuery<UserStats>({
     queryKey: ["/api/auth/user"],
     enabled: isAuthenticated,
@@ -76,18 +76,18 @@ export default function Dashboard() {
 
   const needsProfile = !userStats.degree || !userStats.className;
 
-  // Use totalStudyTime from database (same source as leaderboard)
+  
   const totalStudyTime = userStats.totalStudyTime || 0;
   
-  // Format study time: convert minutes to hours and minutes (same format as leaderboard)
+  
   const hours = Math.floor(totalStudyTime / 60);
   const minutes = totalStudyTime % 60;
   const formattedStudyTime = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
   
-  // Use currentStreak from database (same source as leaderboard)
+  
   const currentStreak = userStats.currentStreak || 0;
   
-  // Calculate average quiz score from database stats (same calculation as leaderboard)
+  
   const averageQuizScore = userStats.quizzesCompleted > 0
     ? Math.round(userStats.totalQuizScore / userStats.quizzesCompleted)
     : 0;

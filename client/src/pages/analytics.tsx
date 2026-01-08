@@ -21,9 +21,9 @@ type UserStats = {
   profileImageUrl: string | null;
   degree: string | null;
   className: string | null;
-  totalStudyTime: number; // in minutes
-  currentStreak: number; // days
-  longestStreak: number; // days
+  totalStudyTime: number; 
+  currentStreak: number; 
+  longestStreak: number; 
   totalQuizScore: number;
   quizzesCompleted: number;
 };
@@ -41,12 +41,12 @@ type StudySession = {
   id: string;
   startTime: string;
   endTime: string | null;
-  duration: number; // in minutes
+  duration: number; 
   tabSwitches: number;
-  timeWasted: number; // in minutes
+  timeWasted: number; 
   isConcentrationMode: boolean;
   pauseCount: number;
-  pauseDuration: number; // in seconds
+  pauseDuration: number; 
 };
 
 export default function Analytics() {
@@ -72,7 +72,7 @@ export default function Analytics() {
     retry: false,
   });
 
-  // Helper function to calculate quiz accuracy for a specific day
+  
   const getQuizAccuracyForDay = (day: Date): number | null => {
     if (!quizAttempts) return null;
     const dayAttempts = quizAttempts.filter(a => {
@@ -89,7 +89,7 @@ export default function Analytics() {
     return Math.round(totalScore / dayAttempts.length);
   };
 
-  // Generate dates for the date selector (2 weeks window around selected date)
+  
   const dateList = useMemo(() => {
     const dates = [];
     for (let i = -6; i <= 7; i++) {
@@ -98,7 +98,7 @@ export default function Analytics() {
     return dates;
   }, [selectedDate]);
 
-  // Quiz Trend Data - Last 7 days ending at selected date
+  
   const quizTrendData = useMemo(() => {
     const trendDates = [];
     for (let i = 6; i >= 0; i--) {
@@ -106,16 +106,16 @@ export default function Analytics() {
     }
     
     return trendDates.map(date => ({
-        timeLabel: format(date, "EEE"), // Mon
+        timeLabel: format(date, "EEE"), 
         fullDate: format(date, "MMM dd"),
         quizAccuracy: getQuizAccuracyForDay(date)
     }));
   }, [selectedDate, quizAttempts]);
 
-  // Process data for the main chart based on viewMode
-  // MUST be called before any early returns to maintain hook order
+  
+  
   const chartData = useMemo(() => {
-    // Helper to get cumulative focus time up to a certain hour/day
+    
     const getFocusTimeForDay = (day: Date): number => {
       if (!studySessions) return 0;
       return studySessions
@@ -131,7 +131,7 @@ export default function Analytics() {
         .reduce((sum, s) => sum + (s.duration || 0), 0);
     };
 
-    // Helper to check if a day had a valid study session (for streak calculation)
+    
     const hadStudySession = (day: Date): boolean => {
       if (!studySessions) return false;
       return studySessions.some(s => {
@@ -146,7 +146,7 @@ export default function Analytics() {
     };
 
     if (viewMode === "days") {
-      // Hourly breakdown for the selected day
+      
       const hourlyData = Array.from({ length: 24 }, (_, i) => {
         const date = new Date(selectedDate);
         date.setHours(i, 0, 0, 0);
@@ -176,10 +176,10 @@ export default function Analytics() {
         }
       });
 
-      // Get daily quiz accuracy
+      
       const dayQuizAccuracy = getQuizAccuracyForDay(selectedDate) ?? 0;
       
-      // Calculate streak up to selected date
+      
       let streakCount = 0;
       let checkDate = new Date(selectedDate);
       while (hadStudySession(checkDate)) {
@@ -187,10 +187,10 @@ export default function Analytics() {
         checkDate = addDays(checkDate, -1);
       }
 
-      // Track cumulative focus time for the day
+      
       let cumulativeFocus = 0;
 
-      // Distribute session duration across hours properly
+      
       daySessions.forEach(session => {
         try {
           const startTime = new Date(session.startTime);
@@ -223,7 +223,7 @@ export default function Analytics() {
         }
       });
 
-      // Add cumulative metrics per hour
+      
       hourlyData.forEach((data, index) => {
         cumulativeFocus += data.studyTime;
         data.focusTime = cumulativeFocus;
@@ -233,14 +233,14 @@ export default function Analytics() {
 
       return hourlyData;
     } else if (viewMode === "weeks") {
-      // Daily breakdown for the week containing selected date
+      
       const weekStart = new Date(selectedDate);
       weekStart.setDate(weekStart.getDate() - weekStart.getDay());
       
       const weekData = Array.from({ length: 7 }, (_, i) => {
         const day = addDays(weekStart, i);
         
-        // Calculate streak up to this day
+        
         let streakCount = 0;
         let checkDate = new Date(day);
         while (hadStudySession(checkDate)) {
@@ -270,14 +270,14 @@ export default function Analytics() {
                 weekData[dayIndex].studyTime += session.duration || 0;
               }
             } catch {
-              // Ignore invalid dates
+              
             }
           });
       }
 
       return weekData;
     } else if (viewMode === "months") {
-      // Weekly breakdown for the month containing selected date
+      
       const monthStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
       const monthEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
       const weeksInMonth = Math.ceil((monthEnd.getDate() + monthStart.getDay()) / 7);
@@ -286,7 +286,7 @@ export default function Analytics() {
         const weekStartDate = addDays(monthStart, i * 7 - monthStart.getDay());
         const weekEndDate = addDays(weekStartDate, 6);
         
-        // Calculate average quiz accuracy for the week
+        
         let totalAccuracy = 0;
         let daysWithQuizzes = 0;
         let totalFocus = 0;
@@ -301,7 +301,7 @@ export default function Analytics() {
           }
           totalFocus += getFocusTimeForDay(day);
           
-          // Calculate streak
+          
           let streakCount = 0;
           let checkDate = new Date(day);
           while (hadStudySession(checkDate)) {
@@ -335,7 +335,7 @@ export default function Analytics() {
                 }
               }
             } catch {
-              // Ignore invalid dates
+              
             }
           });
       }
@@ -346,42 +346,42 @@ export default function Analytics() {
     return [];
   }, [studySessions, quizAttempts, selectedDate, viewMode]);
 
-  // Calculate derived values - MUST be before early returns
+  
   const validQuizAttempts = quizAttempts?.filter(a => !a.isCancelled) || [];
   const concentrationSessions = studySessions?.filter(s => s.isConcentrationMode) || [];
   
-  // Calculate stats - use safe defaults
+  
   const averageQuizScore = userStats?.quizzesCompleted && userStats.quizzesCompleted > 0
     ? Math.round((userStats.totalQuizScore || 0) / userStats.quizzesCompleted)
     : 0;
 
   const totalFocusTime = concentrationSessions.reduce((sum, s) => sum + (s.duration || 0), 0);
 
-  // Chart config matching the image colors
+  
   const mainChartConfig: ChartConfig = {
     studyTime: {
       label: "Study Time",
-      color: "hsl(var(--gamification))", // Purple
+      color: "hsl(var(--gamification))", 
     },
     goal: {
       label: "Goal",
-      color: "hsl(var(--warning))", // Yellow
+      color: "hsl(var(--warning))", 
     },
     quizAccuracy: {
       label: "Quiz Accuracy",
-      color: "hsl(217, 91%, 60%)", // Blue
+      color: "hsl(217, 91%, 60%)", 
     },
     focusTime: {
       label: "Focus Time",
-      color: "hsl(var(--primary))", // Blue
+      color: "hsl(var(--primary))", 
     },
     streak: {
       label: "Study Streak",
-      color: "hsl(24, 100%, 50%)", // Orange
+      color: "hsl(24, 100%, 50%)", 
     },
   };
 
-  // NOW we can do early returns after all hooks are called
+  
   const isLoading = userStatsLoading || quizAttemptsLoading || studySessionsLoading;
 
   if (!user || isLoading) {
@@ -429,7 +429,7 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* Date Selector */}
+      {}
       <div className="flex gap-3 overflow-x-auto pb-4 mb-6 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 snap-x">
         {dateList.map((date, i) => {
           const isSelected = isSameDay(date, selectedDate);
@@ -451,9 +451,9 @@ export default function Analytics() {
         })}
       </div>
 
-      {/* Main Chart Card */}
+      {}
       <Card className="p-6 mb-8 border-none bg-gradient-to-b from-card to-background shadow-xl rounded-[2rem]">
-        {/* Chart Legend */}
+        {}
         <div className="flex flex-wrap gap-4 mb-4 px-2">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-gamification"></div>
@@ -515,7 +515,7 @@ export default function Analytics() {
                       content={<ChartTooltipContent indicator="line" />}
                     />
                     
-                    {/* Focus Time Area (Blue - background) */}
+                    {}
                     <Area
                         yAxisId="left"
                         type="monotone"
@@ -528,7 +528,7 @@ export default function Analytics() {
                         isAnimationActive={true}
                     />
 
-                    {/* Main Study Time Area (Purple) */}
+                    {}
                     <Area
                         yAxisId="left"
                         type="monotone"
@@ -541,7 +541,7 @@ export default function Analytics() {
                         isAnimationActive={true}
                     />
                     
-                    {/* Dashed Goal Line (Yellow) */}
+                    {}
                     <Line
                         yAxisId="left"
                         type="monotone"
@@ -554,7 +554,7 @@ export default function Analytics() {
                         isAnimationActive={true}
                     />
 
-                    {/* Quiz Accuracy Line (Blue) - using right axis for percentage */}
+                    {}
                     <Line
                         yAxisId="right"
                         type="monotone"
@@ -566,7 +566,7 @@ export default function Analytics() {
                         isAnimationActive={true}
                     />
 
-                    {/* Streak Line (Orange) - using right axis */}
+                    {}
                     <Line
                         yAxisId="right"
                         type="stepAfter"
@@ -591,7 +591,7 @@ export default function Analytics() {
         </div>
       </Card>
 
-      {/* Stats Grid */}
+      {}
       <div className="grid md:grid-cols-3 gap-6">
         <Card className="p-6 border bg-card/50">
           <div className="flex items-center gap-3 mb-4">
@@ -648,7 +648,7 @@ export default function Analytics() {
         </Card>
       </div>
 
-      {/* Quiz Accuracy Trend Chart */}
+      {}
       <Card className="p-6 mt-8 border-none bg-gradient-to-b from-card to-background shadow-xl rounded-[2rem]">
         <div className="flex items-center gap-2 mb-6">
             <div className="p-2 rounded-xl" style={{ backgroundColor: 'hsla(217, 91%, 60%, 0.1)' }}>

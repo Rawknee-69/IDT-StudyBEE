@@ -1,5 +1,5 @@
-// Deepgram text-to-speech module
-// API key is checked only when generateAudioFromText is called
+
+
 
 export interface TextToSpeechOptions {
   text: string;
@@ -7,9 +7,7 @@ export interface TextToSpeechOptions {
   voice?: string;
 }
 
-/**
- * Split text into chunks at sentence boundaries
- */
+
 function splitTextIntoChunks(text: string, maxChunkSize: number = 1900): string[] {
   if (text.length <= maxChunkSize) {
     return [text];
@@ -24,16 +22,16 @@ function splitTextIntoChunks(text: string, maxChunkSize: number = 1900): string[
       break;
     }
 
-    // Get a chunk
+    
     let chunk = remainingText.substring(0, maxChunkSize);
     
-    // Try to find a sentence boundary
+    
     const lastPeriod = chunk.lastIndexOf('.');
     const lastExclamation = chunk.lastIndexOf('!');
     const lastQuestion = chunk.lastIndexOf('?');
     const lastSentenceEnd = Math.max(lastPeriod, lastExclamation, lastQuestion);
     
-    // If we found a sentence boundary in the last 20% of the chunk, use it
+    
     if (lastSentenceEnd > maxChunkSize * 0.8) {
       chunk = chunk.substring(0, lastSentenceEnd + 1);
     }
@@ -45,10 +43,7 @@ function splitTextIntoChunks(text: string, maxChunkSize: number = 1900): string[
   return chunks;
 }
 
-/**
- * Combine multiple WAV buffers into one
- * WAV files have a 44-byte header, we keep the first header and concatenate the audio data
- */
+
 function combineWavBuffers(buffers: Buffer[]): Buffer {
   if (buffers.length === 0) {
     throw new Error("No buffers to combine");
@@ -58,32 +53,32 @@ function combineWavBuffers(buffers: Buffer[]): Buffer {
     return buffers[0];
   }
 
-  // WAV header is 44 bytes
+  
   const WAV_HEADER_SIZE = 44;
   
-  // Get the first buffer's header
+  
   const header = buffers[0].slice(0, WAV_HEADER_SIZE);
   
-  // Collect all audio data (skip headers from all buffers)
+  
   const audioDataChunks = buffers.map(buffer => buffer.slice(WAV_HEADER_SIZE));
   
-  // Calculate total audio data size
+  
   const totalAudioSize = audioDataChunks.reduce((sum, chunk) => sum + chunk.length, 0);
   
-  // Update the file size in the header
-  // Bytes 4-7 contain file size - 8
+  
+  
   const totalFileSize = WAV_HEADER_SIZE + totalAudioSize - 8;
   header.writeUInt32LE(totalFileSize, 4);
   
-  // Bytes 40-43 contain audio data size
+  
   header.writeUInt32LE(totalAudioSize, 40);
   
-  // Combine header + all audio data
+  
   return Buffer.concat([header, ...audioDataChunks]);
 }
 
 async function generateAudioForSingleChunk(text: string, model: string): Promise<Buffer> {
-  // Dynamic import to avoid loading at module initialization
+  
   const { createClient } = await import("@deepgram/sdk");
   
   const apiKey = process.env.DEEPGRAM_API_KEY;
@@ -130,7 +125,7 @@ export async function generateAudioFromText(options: TextToSpeechOptions): Promi
   const { text, model = "aura-asteria-en" } = options;
 
   try {
-    // Split text into chunks if needed
+    
     const textChunks = splitTextIntoChunks(text, 1900);
     
     if (textChunks.length === 1) {
@@ -140,7 +135,7 @@ export async function generateAudioFromText(options: TextToSpeechOptions): Promi
 
     console.log(`Generating audio in ${textChunks.length} chunks`);
     
-    // Generate audio for each chunk
+    
     const audioBuffers: Buffer[] = [];
     for (let i = 0; i < textChunks.length; i++) {
       console.log(`Generating audio chunk ${i + 1}/${textChunks.length} (${textChunks[i].length} chars)`);
@@ -148,7 +143,7 @@ export async function generateAudioFromText(options: TextToSpeechOptions): Promi
       audioBuffers.push(buffer);
     }
 
-    // Combine all audio buffers
+    
     console.log("Combining audio chunks...");
     const combinedBuffer = combineWavBuffers(audioBuffers);
     console.log(`Combined audio size: ${combinedBuffer.length} bytes`);

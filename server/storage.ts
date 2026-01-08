@@ -68,7 +68,7 @@ import {
 } from "@shared/schema";
 
 export interface IStorage {
-  // User operations
+  
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -88,40 +88,40 @@ export interface IStorage {
   getTopUsersByStudyTime(limit: number): Promise<User[]>;
   getTopUsersByQuizScore(limit: number): Promise<User[]>;
 
-  // Study Material operations
+  
   getStudyMaterial(id: string): Promise<StudyMaterial | undefined>;
   getStudyMaterialsByUser(userId: string): Promise<StudyMaterial[]>;
   createStudyMaterial(material: InsertStudyMaterial): Promise<StudyMaterial>;
   deleteStudyMaterial(id: string): Promise<void>;
 
-  // Flashcard operations
+  
   getFlashcard(id: string): Promise<Flashcard | undefined>;
   getFlashcardsByUser(userId: string): Promise<Flashcard[]>;
   getFlashcardsByMaterial(materialId: string): Promise<Flashcard[]>;
   createFlashcard(flashcard: InsertFlashcard): Promise<Flashcard>;
   deleteFlashcard(id: string): Promise<void>;
 
-  // Quiz operations
+  
   getQuiz(id: string): Promise<Quiz | undefined>;
   getQuizzesByUser(userId: string): Promise<Quiz[]>;
   getQuizzesByMaterial(materialId: string): Promise<Quiz[]>;
   createQuiz(quiz: InsertQuiz): Promise<Quiz>;
   deleteQuiz(id: string): Promise<void>;
 
-  // Quiz Attempt operations
+  
   getQuizAttempt(id: string): Promise<QuizAttempt | undefined>;
   getQuizAttemptsByUser(userId: string): Promise<QuizAttempt[]>;
   getQuizAttemptsByQuiz(quizId: string): Promise<QuizAttempt[]>;
   createQuizAttempt(attempt: InsertQuizAttempt): Promise<QuizAttempt>;
 
-  // Mind Map operations
+  
   getMindMap(id: string): Promise<MindMap | undefined>;
   getMindMapsByUser(userId: string): Promise<MindMap[]>;
   getMindMapsByMaterial(materialId: string): Promise<MindMap[]>;
   createMindMap(mindMap: InsertMindMap): Promise<MindMap>;
   deleteMindMap(id: string): Promise<void>;
 
-  // Summary operations
+  
   getSummary(id: string): Promise<Summary | undefined>;
   getSummariesByUser(userId: string): Promise<Summary[]>;
   getSummaryByMaterial(materialId: string): Promise<Summary | undefined>;
@@ -129,7 +129,7 @@ export interface IStorage {
   updateSummary(id: string, updates: Partial<InsertSummary>): Promise<Summary | undefined>;
   deleteSummary(id: string): Promise<void>;
 
-  // Study Session operations
+  
   getStudySession(id: string): Promise<StudySession | undefined>;
   getStudySessionsByUser(userId: string): Promise<StudySession[]>;
   createStudySession(session: InsertStudySession): Promise<StudySession>;
@@ -138,26 +138,26 @@ export interface IStorage {
     updates: Partial<InsertStudySession>
   ): Promise<StudySession | undefined>;
 
-  // Todo operations
+  
   getTodo(id: string): Promise<Todo | undefined>;
   getTodosByUser(userId: string): Promise<Todo[]>;
   createTodo(todo: InsertTodo): Promise<Todo>;
   updateTodo(id: string, updates: Partial<InsertTodo>): Promise<Todo | undefined>;
   deleteTodo(id: string): Promise<void>;
 
-  // Pomodoro operations
+  
   getPomodoroSession(id: string): Promise<PomodoroSession | undefined>;
   getPomodoroSessionsByUser(userId: string): Promise<PomodoroSession[]>;
   createPomodoroSession(session: InsertPomodoroSession): Promise<PomodoroSession>;
 
-  // Chat Message operations
+  
   getChatMessage(id: string): Promise<ChatMessage | undefined>;
   getChatMessagesByUser(userId: string): Promise<ChatMessage[]>;
   getChatMessagesByMaterial(materialId: string): Promise<ChatMessage[]>;
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
   deleteChatMessagesByMaterial(materialId: string): Promise<void>;
 
-  // Collaboration Session operations
+  
   getCollabSession(id: string): Promise<CollabSession | undefined>;
   getCollabSessionByCode(code: string): Promise<CollabSession | undefined>;
   getCollabSessionsByHost(hostUserId: string): Promise<CollabSession[]>;
@@ -166,7 +166,7 @@ export interface IStorage {
   updateCollabSession(id: string, updates: Partial<InsertCollabSession>): Promise<CollabSession | undefined>;
   endCollabSession(id: string): Promise<CollabSession | undefined>;
 
-  // Collaboration Participant operations
+  
   getCollabParticipant(id: string): Promise<CollabParticipant | undefined>;
   getCollabParticipantsBySession(sessionId: string): Promise<CollabParticipant[]>;
   getActiveCollabParticipantsBySession(sessionId: string): Promise<CollabParticipant[]>;
@@ -175,41 +175,41 @@ export interface IStorage {
   updateCollabParticipant(id: string, updates: Partial<InsertCollabParticipant>): Promise<CollabParticipant | undefined>;
   removeCollabParticipant(id: string): Promise<void>;
 
-  // Collaboration Whiteboard operations
+  
   getCollabWhiteboard(id: string): Promise<CollabWhiteboard | undefined>;
   getCollabWhiteboardBySession(sessionId: string): Promise<CollabWhiteboard | undefined>;
   createCollabWhiteboard(whiteboard: InsertCollabWhiteboard): Promise<CollabWhiteboard>;
   updateCollabWhiteboard(id: string, updates: Partial<InsertCollabWhiteboard>): Promise<CollabWhiteboard | undefined>;
 
-  // Collaboration Activity operations
+  
   getCollabActivity(id: string): Promise<CollabActivity | undefined>;
   getCollabActivitiesBySession(sessionId: string): Promise<CollabActivity[]>;
   createCollabActivity(activity: InsertCollabActivity): Promise<CollabActivity>;
 
-  // Collaboration Chat Message operations
+  
   getCollabChatMessage(id: string): Promise<CollabChatMessage | undefined>;
   getCollabChatMessagesBySession(sessionId: string): Promise<CollabChatMessage[]>;
   createCollabChatMessage(message: InsertCollabChatMessage): Promise<CollabChatMessage>;
 
-  // Collaboration Presentation operations
+  
   getCollabPresentation(id: string): Promise<CollabPresentation | undefined>;
   getCollabPresentationsBySession(sessionId: string): Promise<CollabPresentation[]>;
   getActiveCollabPresentation(sessionId: string): Promise<CollabPresentation | undefined>;
   createCollabPresentation(presentation: InsertCollabPresentation): Promise<CollabPresentation>;
   updateCollabPresentation(id: string, updates: Partial<InsertCollabPresentation>): Promise<CollabPresentation | undefined>;
   
-  // Collaboration Presentation Editor operations
+  
   getCollabPresentationEditors(presentationId: string): Promise<CollabPresentationEditor[]>;
   hasCollabPresentationEditPermission(presentationId: string, userId: string): Promise<boolean>;
   grantCollabPresentationEdit(editor: InsertCollabPresentationEditor): Promise<CollabPresentationEditor>;
   revokeCollabPresentationEdit(presentationId: string, userId: string): Promise<void>;
 
-  // Material Topics operations
+  
   getMaterialTopics(materialId: string): Promise<MaterialTopics | undefined>;
   createOrUpdateMaterialTopics(topics: InsertMaterialTopics): Promise<MaterialTopics>;
   deleteMaterialTopics(materialId: string): Promise<void>;
 
-  // YouTube Recommendations operations
+  
   getYoutubeRecommendationsByMaterial(materialId: string): Promise<YoutubeRecommendation[]>;
   getYoutubeRecommendationByTopic(materialId: string, topic: string): Promise<YoutubeRecommendation | undefined>;
   createYoutubeRecommendation(recommendation: InsertYoutubeRecommendation): Promise<YoutubeRecommendation>;
@@ -217,7 +217,7 @@ export interface IStorage {
 }
 
 export class DbStorage implements IStorage {
-  // User operations
+  
   async getUser(id: string): Promise<User | undefined> {
     const result = await db.select().from(users).where(eq(users.id, id));
     return result[0];
@@ -234,7 +234,7 @@ export class DbStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    // Try to insert, handle conflict on either id or email
+    
     try {
       const result = await db
         .insert(users)
@@ -252,7 +252,7 @@ export class DbStorage implements IStorage {
         .returning();
       return result[0];
     } catch (error: any) {
-      // If conflict is on email instead of id, update by email
+      
       if (error?.code === '23505' && error?.detail?.includes('email')) {
         const result = await db
           .update(users)
@@ -315,7 +315,7 @@ export class DbStorage implements IStorage {
       .limit(limit);
   }
 
-  // Study Material operations
+  
   async getStudyMaterial(id: string): Promise<StudyMaterial | undefined> {
     const result = await db.select().from(studyMaterials).where(eq(studyMaterials.id, id));
     return result[0];
@@ -338,7 +338,7 @@ export class DbStorage implements IStorage {
     await db.delete(studyMaterials).where(eq(studyMaterials.id, id));
   }
 
-  // Flashcard operations
+  
   async getFlashcard(id: string): Promise<Flashcard | undefined> {
     const result = await db.select().from(flashcards).where(eq(flashcards.id, id));
     return result[0];
@@ -369,7 +369,7 @@ export class DbStorage implements IStorage {
     await db.delete(flashcards).where(eq(flashcards.id, id));
   }
 
-  // Quiz operations
+  
   async getQuiz(id: string): Promise<Quiz | undefined> {
     const result = await db.select().from(quizzes).where(eq(quizzes.id, id));
     return result[0];
@@ -400,7 +400,7 @@ export class DbStorage implements IStorage {
     await db.delete(quizzes).where(eq(quizzes.id, id));
   }
 
-  // Quiz Attempt operations
+  
   async getQuizAttempt(id: string): Promise<QuizAttempt | undefined> {
     const result = await db.select().from(quizAttempts).where(eq(quizAttempts.id, id));
     return result[0];
@@ -427,7 +427,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  // Mind Map operations
+  
   async getMindMap(id: string): Promise<MindMap | undefined> {
     const result = await db.select().from(mindMaps).where(eq(mindMaps.id, id));
     return result[0];
@@ -458,7 +458,7 @@ export class DbStorage implements IStorage {
     await db.delete(mindMaps).where(eq(mindMaps.id, id));
   }
 
-  // Summary operations
+  
   async getSummary(id: string): Promise<Summary | undefined> {
     const result = await db.select().from(summaries).where(eq(summaries.id, id));
     return result[0];
@@ -496,7 +496,7 @@ export class DbStorage implements IStorage {
     await db.delete(summaries).where(eq(summaries.id, id));
   }
 
-  // Study Session operations
+  
   async getStudySession(id: string): Promise<StudySession | undefined> {
     const result = await db.select().from(studySessions).where(eq(studySessions.id, id));
     return result[0];
@@ -527,7 +527,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  // Todo operations
+  
   async getTodo(id: string): Promise<Todo | undefined> {
     const result = await db.select().from(todos).where(eq(todos.id, id));
     return result[0];
@@ -555,7 +555,7 @@ export class DbStorage implements IStorage {
     await db.delete(todos).where(eq(todos.id, id));
   }
 
-  // Pomodoro operations
+  
   async getPomodoroSession(id: string): Promise<PomodoroSession | undefined> {
     const result = await db.select().from(pomodoroSessions).where(eq(pomodoroSessions.id, id));
     return result[0];
@@ -574,7 +574,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  // Chat Message operations
+  
   async getChatMessage(id: string): Promise<ChatMessage | undefined> {
     const result = await db.select().from(chatMessages).where(eq(chatMessages.id, id));
     return result[0];
@@ -605,7 +605,7 @@ export class DbStorage implements IStorage {
     await db.delete(chatMessages).where(eq(chatMessages.materialId, materialId));
   }
 
-  // Collaboration Session operations
+  
   async getCollabSession(id: string): Promise<CollabSession | undefined> {
     const result = await db.select().from(collabSessions).where(eq(collabSessions.id, id));
     return result[0];
@@ -655,7 +655,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  // Collaboration Participant operations
+  
   async getCollabParticipant(id: string): Promise<CollabParticipant | undefined> {
     const result = await db.select().from(collabParticipants).where(eq(collabParticipants.id, id));
     return result[0];
@@ -706,7 +706,7 @@ export class DbStorage implements IStorage {
       .where(eq(collabParticipants.id, id));
   }
 
-  // Collaboration Whiteboard operations
+  
   async getCollabWhiteboard(id: string): Promise<CollabWhiteboard | undefined> {
     const result = await db.select().from(collabWhiteboards).where(eq(collabWhiteboards.id, id));
     return result[0];
@@ -731,7 +731,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  // Collaboration Activity operations
+  
   async getCollabActivity(id: string): Promise<CollabActivity | undefined> {
     const result = await db.select().from(collabActivities).where(eq(collabActivities.id, id));
     return result[0];
@@ -750,7 +750,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  // Collaboration Chat Message operations
+  
   async getCollabChatMessage(id: string): Promise<CollabChatMessage | undefined> {
     const result = await db.select().from(collabChatMessages).where(eq(collabChatMessages.id, id));
     return result[0];
@@ -769,7 +769,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  // Collaboration Presentation operations
+  
   async getCollabPresentation(id: string): Promise<CollabPresentation | undefined> {
     const result = await db.select().from(collabPresentations).where(eq(collabPresentations.id, id));
     return result[0];
@@ -805,7 +805,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  // Collaboration Presentation Editor operations
+  
   async getCollabPresentationEditors(presentationId: string): Promise<CollabPresentationEditor[]> {
     return await db
       .select()
@@ -832,7 +832,7 @@ export class DbStorage implements IStorage {
       .where(sql`${collabPresentationEditors.presentationId} = ${presentationId} AND ${collabPresentationEditors.userId} = ${userId}`);
   }
 
-  // Material Topics operations
+  
   async getMaterialTopics(materialId: string): Promise<MaterialTopics | undefined> {
     const result = await db
       .select()
@@ -844,9 +844,9 @@ export class DbStorage implements IStorage {
   }
 
   async createOrUpdateMaterialTopics(topics: InsertMaterialTopics): Promise<MaterialTopics> {
-    // Delete existing topics for this material
+    
     await db.delete(materialTopics).where(eq(materialTopics.materialId, topics.materialId));
-    // Insert new topics
+    
     const result = await db.insert(materialTopics).values(topics).returning();
     return result[0];
   }
@@ -855,7 +855,7 @@ export class DbStorage implements IStorage {
     await db.delete(materialTopics).where(eq(materialTopics.materialId, materialId));
   }
 
-  // YouTube Recommendations operations
+  
   async getYoutubeRecommendationsByMaterial(materialId: string): Promise<YoutubeRecommendation[]> {
     return await db
       .select()

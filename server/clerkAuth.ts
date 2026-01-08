@@ -1,7 +1,7 @@
 import type { Express, RequestHandler } from "express";
 import { clerkClient, verifyToken } from "@clerk/clerk-sdk-node";
 
-// Extend Express Request to include Clerk user
+
 declare global {
   namespace Express {
     interface Request {
@@ -21,13 +21,13 @@ declare global {
 }
 
 export async function setupAuth(app: Express) {
-  // Clerk middleware will be handled by the isAuthenticated middleware
-  // No additional setup needed as Clerk handles auth via headers
+  
+  
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   try {
-    // Get the Authorization header
+    
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -36,7 +36,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
 
     const token = authHeader.replace("Bearer ", "");
     
-    // Verify the JWT token with Clerk
+    
     const payload = await verifyToken(token, {
       secretKey: process.env.CLERK_SECRET_KEY!,
     });
@@ -45,16 +45,16 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // Get user details from Clerk
+    
     const clerkUser = await clerkClient.users.getUser(payload.sub);
     
-    // Attach auth info to request
+    
     req.auth = {
       userId: payload.sub,
       sessionId: payload.sid || "",
     };
 
-    // Attach user info to request
+    
     req.user = {
       id: clerkUser.id,
       email: clerkUser.emailAddresses[0]?.emailAddress || "",

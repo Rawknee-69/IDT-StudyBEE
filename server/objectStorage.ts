@@ -9,11 +9,11 @@ import {
   setObjectAclPolicy,
 } from "./objectAcl";
 
-// Initialize Google Cloud Storage client
-// Uses GOOGLE_APPLICATION_CREDENTIALS env var or default credentials
+
+
 export const objectStorageClient = new Storage({
-  // If GOOGLE_APPLICATION_CREDENTIALS is set, it will use that service account
-  // Otherwise, it will use default credentials from the environment
+  
+  
   projectId: process.env.GOOGLE_CLOUD_PROJECT_ID || "",
 });
 

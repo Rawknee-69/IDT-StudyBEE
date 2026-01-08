@@ -139,7 +139,7 @@ export default function Concentration() {
         pauseDuration: 0,
         pauseReasons: [],
       });
-      return await response.json(); // Parse JSON from response
+      return await response.json(); 
     },
     onSuccess: (data: any) => {
       if (data && data.id) {
@@ -167,7 +167,7 @@ export default function Concentration() {
       pauseDuration: number;
       pauseReasons: Array<{ reason: string; duration: number; timestamp: string }>;
     }) => {
-      // Skip if sessionId is invalid
+      
       if (!data.sessionId) {
         console.warn("Skipping update: no session ID");
         return null;
@@ -186,7 +186,7 @@ export default function Concentration() {
       queryClient.invalidateQueries({ queryKey: ["/api/study-sessions"] });
     },
     onError: (error: Error) => {
-      // Don't show error for auto-save failures (too noisy)
+      
       console.error("Auto-save error:", error.message);
     },
   });
@@ -201,16 +201,16 @@ export default function Concentration() {
       pauseDuration: number;
       pauseReasons: Array<{ reason: string; duration: number; timestamp: string }>;
     }) => {
-      // Calculate duration in minutes, ensuring at least 1 minute if any time was recorded
+      
       const durationMinutes = params.elapsedTime > 0 
-        ? Math.max(1, Math.round(params.elapsedTime / 60)) // Round instead of floor, minimum 1 min
+        ? Math.max(1, Math.round(params.elapsedTime / 60)) 
         : 0;
       
       const response = await apiRequest("PATCH", `/api/study-sessions/${params.sessionId}`, {
         endTime: new Date().toISOString(),
         duration: durationMinutes,
         tabSwitches: params.tabSwitches,
-        timeWasted: Math.round(params.timeWasted / 60), // Round instead of floor
+        timeWasted: Math.round(params.timeWasted / 60), 
         pauseCount: params.pauseCount,
         pauseDuration: params.pauseDuration,
         pauseReasons: params.pauseReasons,
@@ -219,7 +219,7 @@ export default function Concentration() {
     },
     onSuccess: ({ params }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/study-sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] }); // Refresh user stats for analytics
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] }); 
       const focusedTime = Math.max(0, Math.round((params.elapsedTime - params.timeWasted) / 60));
       toast({
         title: "Session Complete!",
@@ -302,7 +302,7 @@ export default function Concentration() {
     }, 5 * 60 * 1000);
 
     autoSaveIntervalRef.current = setInterval(() => {
-      // Use refs to get latest values
+      
       const currentSessionId = currentSessionIdRef.current;
       if (currentSessionId) {
         updateSessionMutation.mutate({
@@ -317,9 +317,9 @@ export default function Concentration() {
       }
     }, 30 * 1000);
 
-    // Only track tab switches when timer is RUNNING (not paused)
+    
     const handleVisibilityChange = () => {
-      // Only track if session is active AND not paused (using ref to get current value)
+      
       if (!isPausedRef.current) {
         if (document.hidden) {
           tabLeftTimeRef.current = Date.now();
@@ -375,7 +375,7 @@ export default function Concentration() {
     }, 5 * 60 * 1000);
 
     autoSaveIntervalRef.current = setInterval(() => {
-      // Use refs to get latest values
+      
       const currentSessionId = currentSessionIdRef.current;
       if (currentSessionId) {
         updateSessionMutation.mutate({
@@ -458,7 +458,7 @@ export default function Concentration() {
     setIsActive(false);
     setIsPaused(false);
     
-    // Capture current values before resetting (use refs for most up-to-date values)
+    
     const sessionId = currentSessionId;
     const currentElapsedTime = elapsedTimeRef.current;
     const currentTabSwitches = tabSwitchesRef.current;
@@ -479,7 +479,7 @@ export default function Concentration() {
       });
     }
     
-    // Reset state after capturing values
+    
     setCurrentSessionId(null);
     setElapsedTime(0);
     setTabSwitches(0);

@@ -57,13 +57,13 @@ export default function Collab() {
   const beepIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isFlashingRef = useRef<boolean>(false);
 
-  // Fetch user's sessions
+  
   const { data: mySessions } = useQuery<CollabSession[]>({
     queryKey: ["/api/collab/my-sessions"],
     enabled: !!user && !activeSession,
   });
 
-  // Create session mutation
+  
   const createSessionMutation = useMutation({
     mutationFn: async (title: string) => {
       const token = await getClerkToken();
@@ -106,7 +106,7 @@ export default function Collab() {
     },
   });
 
-  // Join session mutation
+  
   const joinSessionMutation = useMutation({
     mutationFn: async (code: string) => {
       const token = await getClerkToken();
@@ -155,7 +155,7 @@ export default function Collab() {
     },
   });
 
-  // End session mutation
+  
   const endSessionMutation = useMutation({
     mutationFn: async (sessionId: string) => {
       const token = await getClerkToken();
@@ -186,15 +186,15 @@ export default function Collab() {
     },
   });
 
-  // WebSocket connection
+  
   const connectWebSocket = async (sessionId: string) => {
     if (wsRef.current) {
-      // If already connected, just ensure we're in the right session
+      
       return;
     }
 
     try {
-      // Get Clerk token for authentication
+      
       const token = await getToken();
       if (!token) {
         toast({
@@ -206,17 +206,17 @@ export default function Collab() {
       }
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      // Construct WebSocket URL - use window.location.host which includes hostname:port
-      // This is the most reliable way as it preserves the exact host and port from the current page
+      
+      
       const host = window.location.host || `${window.location.hostname || 'localhost'}:${window.location.port || (protocol === 'wss:' ? '443' : '80')}`;
       
-      // Pass token as query parameter since WebSocket doesn't support custom headers in browser
+      
       const wsUrl = `${protocol}//${host}/collab-ws?token=${encodeURIComponent(token)}`;
       console.log("[WebSocket] Connecting to:", wsUrl);
       
-      // Validate URL before creating WebSocket
+      
       try {
-        new URL(wsUrl); // This will throw if URL is invalid
+        new URL(wsUrl); 
       } catch (urlError) {
         console.error("[WebSocket] Invalid URL constructed:", wsUrl, urlError);
         throw new Error(`Invalid WebSocket URL: ${wsUrl}`);
@@ -247,15 +247,15 @@ export default function Collab() {
 
       ws.onerror = (error) => {
         console.error("WebSocket error:", error);
-        // Don't show toast for connection errors as they're often transient
+        
       };
 
       ws.onclose = (event) => {
         wsRef.current = null;
-        // If closed with reason "Session ended", handle it gracefully
+        
         if (event.reason === "Session ended" || event.code === 1000) {
-          // Session was ended by host - state will be cleared by session_ended message handler
-          // But if message didn't arrive, clean up here as fallback
+          
+          
           if (activeSession) {
             setActiveSession(null);
             setParticipants([]);
@@ -322,7 +322,7 @@ export default function Collab() {
           console.log("Updating activeSession concentrationMode from", activeSession.concentrationMode, "to", msg.data.enabled);
           setActiveSession({ ...activeSession, concentrationMode: msg.data.enabled });
           
-          // If concentration mode is disabled and tab is away, clean up intervals
+          
           if (!msg.data.enabled && document.hidden) {
             if (titleFlashIntervalRef.current) {
               clearInterval(titleFlashIntervalRef.current);
@@ -353,14 +353,14 @@ export default function Collab() {
         break;
       case "all_muted":
         setIsAllMuted(true);
-        // Refresh participants to get updated mute status
+        
         if (activeSession) {
           fetchParticipants(activeSession.id);
         }
         break;
       case "all_unmuted":
         setIsAllMuted(false);
-        // Refresh participants to get updated mute status
+        
         if (activeSession) {
           fetchParticipants(activeSession.id);
         }
@@ -378,7 +378,7 @@ export default function Collab() {
           description: msg.data.message || "The session has been ended by the host",
           variant: "destructive",
         });
-        // Disconnect WebSocket and reset session state
+        
         disconnectWebSocket();
         setActiveSession(null);
         setParticipants([]);
@@ -470,7 +470,7 @@ export default function Collab() {
     }
   };
 
-  // Canvas drawing
+  
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current) return;
     setIsDrawing(true);
@@ -478,7 +478,7 @@ export default function Collab() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
-    // Broadcast drawing state to show active user
+    
     if (wsRef.current && activeSession) {
       wsRef.current.send(JSON.stringify({
         type: "drawing_state",
@@ -515,7 +515,7 @@ export default function Collab() {
     setWhiteboardContent(newContent);
     renderCanvas(newContent);
     
-    // Broadcast to other participants
+    
     if (wsRef.current && activeSession) {
       wsRef.current.send(JSON.stringify({
         type: "whiteboard_update",
@@ -529,7 +529,7 @@ export default function Collab() {
     if (isDrawing && activeSession) {
       setIsDrawing(false);
       
-      // Broadcast stopped drawing state
+      
       if (wsRef.current && activeSession) {
         wsRef.current.send(JSON.stringify({
           type: "drawing_state",
@@ -538,7 +538,7 @@ export default function Collab() {
         }));
       }
       
-      // Schedule auto-save (10 seconds after drawing stops)
+      
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
       }
@@ -555,7 +555,7 @@ export default function Collab() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     
-    // Clear canvas with black background
+    
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -588,7 +588,7 @@ export default function Collab() {
         });
         ctx.stroke();
         
-        // Reset for next element
+        
         ctx.globalAlpha = 1.0;
         ctx.globalCompositeOperation = "source-over";
       }
@@ -613,7 +613,7 @@ export default function Collab() {
   const sendChatMessage = () => {
     if (!chatInput.trim() || !wsRef.current || !activeSession) return;
     
-    // Check if current user is muted
+    
     const currentParticipant = participants.find(p => p.userId === user?.id);
     if (currentParticipant?.isMuted || isAllMuted) {
       toast({
@@ -634,10 +634,10 @@ export default function Collab() {
     setChatInput("");
   };
 
-  // Function to play beep sound
+  
   const playBeep = () => {
     try {
-      // Create audio context for beep sound
+      
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
@@ -645,7 +645,7 @@ export default function Collab() {
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
 
-      oscillator.frequency.value = 800; // Beep frequency
+      oscillator.frequency.value = 800; 
       oscillator.type = "sine";
 
       gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
@@ -658,9 +658,9 @@ export default function Collab() {
     }
   };
 
-  // Tab visibility detection with concentration mode handling
+  
   useEffect(() => {
-    // Store original title
+    
     if (!originalTitleRef.current) {
       originalTitleRef.current = document.title;
     }
@@ -669,7 +669,7 @@ export default function Collab() {
       const isConcentrationMode = activeSession?.concentrationMode;
       
       if (document.hidden) {
-        // Tab switched away
+        
         if (activeSession && wsRef.current) {
           wsRef.current.send(JSON.stringify({
             type: "tab_switch",
@@ -677,24 +677,24 @@ export default function Collab() {
           }));
         }
 
-        // If in concentration mode, flash title and play beep
+        
         if (isConcentrationMode) {
-          // Flash title
+          
           isFlashingRef.current = false;
           titleFlashIntervalRef.current = setInterval(() => {
             document.title = isFlashingRef.current ? originalTitleRef.current : "⚠️ Come Back ⚠️";
             isFlashingRef.current = !isFlashingRef.current;
-          }, 500); // Flash every 500ms
+          }, 500); 
 
-          // Play beep every minute
-          playBeep(); // Play immediately
+          
+          playBeep(); 
           beepIntervalRef.current = setInterval(() => {
             playBeep();
-          }, 60000); // Every 60 seconds (1 minute)
+          }, 60000); 
         }
       } else {
-        // Tab came back
-        // Clear intervals
+        
+        
         if (titleFlashIntervalRef.current) {
           clearInterval(titleFlashIntervalRef.current);
           titleFlashIntervalRef.current = null;
@@ -704,7 +704,7 @@ export default function Collab() {
           beepIntervalRef.current = null;
         }
         
-        // Restore original title
+        
         document.title = originalTitleRef.current;
       }
     };
@@ -713,7 +713,7 @@ export default function Collab() {
     
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      // Clean up intervals
+      
       if (titleFlashIntervalRef.current) {
         clearInterval(titleFlashIntervalRef.current);
         titleFlashIntervalRef.current = null;
@@ -722,12 +722,12 @@ export default function Collab() {
         clearInterval(beepIntervalRef.current);
         beepIntervalRef.current = null;
       }
-      // Restore title on cleanup
+      
       document.title = originalTitleRef.current;
     };
   }, [activeSession]);
 
-  // Break timer countdown
+  
   useEffect(() => {
     if (isOnBreak && breakTimeLeft > 0) {
       const interval = setInterval(() => {
@@ -743,14 +743,14 @@ export default function Collab() {
     }
   }, [isOnBreak, breakTimeLeft]);
 
-  // Cleanup on unmount
+  
   useEffect(() => {
     return () => {
       disconnectWebSocket();
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
       }
-      // Clean up title flash and beep intervals
+      
       if (titleFlashIntervalRef.current) {
         clearInterval(titleFlashIntervalRef.current);
         titleFlashIntervalRef.current = null;
@@ -759,7 +759,7 @@ export default function Collab() {
         clearInterval(beepIntervalRef.current);
         beepIntervalRef.current = null;
       }
-      // Restore original title
+      
       if (originalTitleRef.current) {
         document.title = originalTitleRef.current;
       }
@@ -833,7 +833,7 @@ export default function Collab() {
   if (activeSession) {
     return (
       <div className="h-full flex flex-col p-4 gap-4" data-testid="collab-active-session">
-        {/* Header */}
+        {}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-session-title">{activeSession.title}</h1>
@@ -889,7 +889,7 @@ export default function Collab() {
           </div>
         </div>
 
-        {/* Break Timer Alert */}
+        {}
         {isOnBreak && (
           <Card className="p-4 bg-yellow-50 dark:bg-yellow-950 border-yellow-200 dark:border-yellow-800">
             <div className="flex items-center gap-3">
@@ -905,7 +905,7 @@ export default function Collab() {
         )}
 
         <div className="flex-1 grid grid-cols-3 gap-4 min-h-0">
-          {/* Whiteboard */}
+          {}
           <Card className="col-span-2 flex flex-col">
             <div className="p-4 border-b space-y-3">
               <div className="flex items-center justify-between">
@@ -980,9 +980,9 @@ export default function Collab() {
             </div>
           </Card>
 
-          {/* Participants & Controls */}
+          {}
           <div className="flex flex-col gap-4">
-            {/* Tab Switch Counter */}
+            {}
             {activeSession.concentrationMode && (
               <Card className="p-4">
                 <div className="text-center">
@@ -992,7 +992,7 @@ export default function Collab() {
               </Card>
             )}
 
-            {/* Break Timer Controls */}
+            {}
             <Card className="p-4">
               <h3 className="font-semibold mb-3">Break Timer</h3>
               <div className="grid grid-cols-2 gap-2">
@@ -1015,7 +1015,7 @@ export default function Collab() {
               </div>
             </Card>
 
-            {/* Participants List */}
+            {}
             <Card className="flex-1 flex flex-col">
               <div className="p-4 border-b">
                 <h3 className="font-semibold flex items-center gap-2">
@@ -1062,7 +1062,7 @@ export default function Collab() {
               </ScrollArea>
             </Card>
 
-            {/* Group Chat */}
+            {}
             <Card className="flex-1 flex flex-col">
               <div className="p-4 border-b">
                 <h3 className="font-semibold">Group Chat</h3>
@@ -1211,7 +1211,7 @@ export default function Collab() {
         </Dialog>
       </div>
 
-      {/* My Sessions */}
+      {}
       {mySessions && mySessions.length > 0 && (
         <div>
           <h2 className="text-xl font-semibold mb-4">Your Recent Sessions</h2>

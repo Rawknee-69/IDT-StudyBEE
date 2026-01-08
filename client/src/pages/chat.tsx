@@ -55,7 +55,7 @@ export default function Chat() {
     }
   }, [isAuthenticated, authLoading, toast]);
 
-  // Cleanup: Cancel any pending requests on unmount
+  
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
@@ -73,7 +73,7 @@ export default function Chat() {
   const { data: messages, isLoading: messagesLoading } = useQuery<ChatMessage[]>({
     queryKey: ["/api/chat/messages", selectedMaterial],
     queryFn: async () => {
-      // Get Clerk token for authentication
+      
       const clerk = (window as any).Clerk;
       const token = clerk?.session ? await clerk.session.getToken() : null;
       
@@ -104,11 +104,11 @@ export default function Chat() {
       return await apiRequest("DELETE", url);
     },
     onMutate: async () => {
-      // Optimistically clear the UI immediately
+      
       queryClient.setQueryData<ChatMessage[]>(["/api/chat/messages", selectedMaterial], []);
     },
     onSuccess: () => {
-      // Remove all related queries
+      
       queryClient.removeQueries({ 
         queryKey: ["/api/chat/messages"],
         exact: false 
@@ -119,13 +119,13 @@ export default function Chat() {
         description: "The chat conversation has been cleared.",
       });
       
-      // Force a hard reload to ensure everything is reset
+      
       setTimeout(() => {
         window.location.reload();
       }, 100);
     },
     onError: (error: Error) => {
-      // Refetch on error to restore correct state
+      
       queryClient.invalidateQueries({ queryKey: ["/api/chat/messages", selectedMaterial] });
       toast({
         title: "Error",
@@ -136,19 +136,19 @@ export default function Chat() {
   });
 
   const sendMessageWithStreaming = async (content: string) => {
-    // Cancel any existing request
+    
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
     
-    // Create new AbortController for this request
+    
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
     
     setIsStreaming(true);
     setStreamingMessage("");
     
-    // Optimistically update the messages list to show user message immediately
+    
     queryClient.setQueryData<ChatMessage[]>(["/api/chat/messages", selectedMaterial], (oldMessages = []) => {
       const optimisticMessage = {
         id: `temp-${Date.now()}`,
@@ -163,7 +163,7 @@ export default function Chat() {
     scrollToBottom();
     
     try {
-      // Get Clerk token for authentication
+      
       const clerk = (window as any).Clerk;
       const token = clerk?.session ? await clerk.session.getToken() : null;
       
@@ -199,7 +199,7 @@ export default function Chat() {
       let buffer = "";
 
       while (true) {
-        // Check if request was aborted
+        
         if (abortController.signal.aborted) {
           reader.cancel();
           break;
@@ -208,12 +208,12 @@ export default function Chat() {
         const { done, value } = await reader.read();
         if (done) break;
 
-        // Decode chunk with streaming mode to handle multi-byte characters
+        
         buffer += decoder.decode(value, { stream: true });
         
-        // Process complete SSE events (terminated by \n\n)
+        
         const events = buffer.split("\n\n");
-        // Keep the last incomplete event in the buffer
+        
         buffer = events.pop() || "";
 
         for (const event of events) {
@@ -224,15 +224,15 @@ export default function Chat() {
                 const data = JSON.parse(line.slice(6));
                 
                 if (data.type === "userMessage") {
-                  // User message was saved, replace optimistic message with real one
+                  
                   queryClient.setQueryData<ChatMessage[]>(["/api/chat/messages", selectedMaterial], (oldMessages = []) => {
-                    // Remove temporary message and add the real one
+                    
                     const filtered = oldMessages.filter(m => !m.id.startsWith("temp-"));
                     return [...filtered, data.message];
                   });
                   scrollToBottom();
                 } else if (data.type === "thinking") {
-                  // AI is thinking, show loading skeleton
+                  
                   setStreamingMessage("");
                 } else if (data.type === "chunk") {
                   setStreamingMessage((prev) => prev + data.content);
@@ -253,7 +253,7 @@ export default function Chat() {
         }
       }
       
-      // Process any remaining buffer content
+      
       if (buffer.trim()) {
         const lines = buffer.split("\n");
         for (const line of lines) {
@@ -274,7 +274,7 @@ export default function Chat() {
         }
       }
     } catch (error: any) {
-      // Don't show error if request was aborted (component unmounted or new request started)
+      
       if (error.name === 'AbortError') {
         return;
       }
@@ -300,7 +300,7 @@ export default function Chat() {
         variant: "destructive",
       });
     } finally {
-      // Clear abort controller reference if this was the active request
+      
       if (abortControllerRef.current === abortController) {
         abortControllerRef.current = null;
       }
@@ -412,8 +412,8 @@ export default function Chat() {
                 onValueChange={(val) => {
                   const newMaterialId = val === "general" ? null : val;
                   setSelectedMaterial(newMaterialId);
-                  // File upload is now handled automatically in the chat message endpoint
-                  // No need to initialize context separately
+                  
+                  
                 }}
               >
                 <SelectTrigger data-testid="select-material" className="border-2 h-9 text-sm">

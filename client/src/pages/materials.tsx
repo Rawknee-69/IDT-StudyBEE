@@ -38,7 +38,7 @@ export default function Materials() {
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
-      // Get Clerk token for authentication
+      
       const clerk = (window as any).Clerk;
       const token = clerk?.session ? await clerk.session.getToken() : null;
       

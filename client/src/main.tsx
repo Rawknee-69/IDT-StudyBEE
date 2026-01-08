@@ -9,9 +9,9 @@ if (!publishableKey) {
   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
 }
 
-// Clerk appearance configuration - matches app theme
+
 const clerkAppearance = {
-  // Let Clerk auto-detect dark mode from the 'dark' class on html element
+  
   baseTheme: undefined,
   variables: {
     colorPrimary: "hsl(84, 81%, 55%)",

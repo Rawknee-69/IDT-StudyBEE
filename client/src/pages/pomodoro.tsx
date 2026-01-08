@@ -28,7 +28,7 @@ type PomodoroSession = {
 
 type TimerState = "idle" | "work" | "break";
 
-// Circular Progress Component
+
 function CircularProgress({ 
   progress, 
   size = 280, 
@@ -76,7 +76,7 @@ function CircularProgress({
         height={size}
         className="transform -rotate-90"
       >
-        {/* Background circle */}
+        {}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -85,7 +85,7 @@ function CircularProgress({
           className={colors.bg}
           strokeWidth={strokeWidth}
         />
-        {/* Progress circle */}
+        {}
         <motion.circle
           cx={size / 2}
           cy={size / 2}
@@ -132,7 +132,7 @@ export default function Pomodoro() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pomodoro-sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] }); // Refresh user stats for analytics
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] }); 
       toast({
         title: "Session Saved",
         description: `Completed ${completedCycles} cycle${completedCycles !== 1 ? 's' : ''}!`,

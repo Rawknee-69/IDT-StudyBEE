@@ -24,7 +24,7 @@ interface StudyMaterial {
   fileName: string;
 }
 
-// Compact Custom Audio Player for Library Cards
+
 function CompactAudioPlayer({ audioUrl, audioId }: { audioUrl: string; audioId: string }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);

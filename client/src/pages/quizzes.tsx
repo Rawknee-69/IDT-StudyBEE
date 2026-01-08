@@ -48,7 +48,7 @@ export default function Quizzes() {
     }
   }, [isAuthenticated, authLoading, toast]);
 
-  // Tab switch detection
+  
   useEffect(() => {
     if (!activeQuiz || isQuizCancelled) return;
 
@@ -136,7 +136,7 @@ export default function Quizzes() {
     onSuccess: (data: any, variables: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/quiz-attempts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] }); // Refresh user stats for analytics
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] }); 
       
       if (variables.isCancelled) {
         toast({
@@ -181,7 +181,7 @@ export default function Quizzes() {
   });
 
   const startQuiz = (quiz: QuizWithQuestions) => {
-    // Safety check: ensure quiz has questions array
+    
     if (!quiz.questions || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
       toast({
         title: "Error",
@@ -280,7 +280,7 @@ export default function Quizzes() {
   if (activeQuiz && activeQuiz.questions && activeQuiz.questions.length > 0) {
     const currentQuestion = activeQuiz.questions[currentQuestionIndex];
     if (!currentQuestion) {
-      // Safety: if current question is undefined, reset quiz
+      
       setActiveQuiz(null);
       setCurrentQuestionIndex(0);
       return null;

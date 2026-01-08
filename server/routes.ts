@@ -4,9 +4,9 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./clerkAuth";
 import multer from "multer";
 import { createPartFromUri, GoogleGenAI } from "@google/genai";
-// Import Deepgram function - will only fail when actually called if API key is missing
+
 import { generateAudioFromText } from "./deepgram";
-// objectStorage and setObjectAclPolicy no longer needed - using UploadThing instead
+
 import { sanitizeMarkdown, sanitizeUserInput, sanitizeForAudio, sanitizeMindMapNode } from "./textUtils";
 import { setupCollabWebSocket, notifySessionEnded } from "./collabWebSocket";
 import {
@@ -32,22 +32,22 @@ import {
 import { db } from "./db";
 import { eq, and, isNull, asc } from "drizzle-orm";
 
-// Initialize Gemini AI
+
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
-// Setup multer for file uploads (in-memory storage)
+
 const upload = multer({ storage: multer.memoryStorage() });
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Auth middleware
+  
   await setupAuth(app);
 
-  // Auth routes
+  
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
       
-      // Upsert user in database if not exists
+      
       let user = await storage.getUser(userId);
       if (!user) {
         user = await storage.upsertUser({
@@ -58,7 +58,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           profileImageUrl: req.user.profileImageUrl || undefined,
         });
       } else {
-        // Update user info from Clerk if changed
+        
         user = await storage.upsertUser({
           id: userId,
           email: req.user.email,
@@ -75,7 +75,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // User profile routes
+  
   app.patch("/api/user/profile", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -88,7 +88,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Study Materials routes
+  
   app.get("/api/study-materials", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -106,7 +106,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!material) {
         return res.status(404).json({ message: "Study material not found" });
       }
-      // Verify ownership
+      
       if (material.userId !== req.user.id) {
         return res.status(403).json({ message: "Forbidden" });
       }
@@ -117,33 +117,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // YouTube Recommendations endpoint with streaming and DB caching
+  
   app.get("/api/resources/youtube-recommendations/:materialId", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const materialId = req.params.materialId;
       const regenerate = req.query.regenerate === 'true';
       
-      // Get the study material
+      
       const material = await storage.getStudyMaterial(materialId);
       if (!material) {
         return res.status(404).json({ message: "Study material not found" });
       }
       
-      // Verify ownership
+      
       if (material.userId !== userId) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      // Set up Server-Sent Events for streaming
+      
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      // Track if client disconnected
+      
       let clientDisconnected = false;
       
-      // Listen for client disconnect
+      
       req.on('close', () => {
         clientDisconnected = true;
         console.log(`Client disconnected for material ${materialId}, stopping search`);
@@ -154,39 +154,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`Request aborted for material ${materialId}, stopping search`);
       });
 
-      // Helper to check if we should continue processing
+      
       const shouldContinue = () => {
         if (clientDisconnected) {
           return false;
         }
-        // Check if response is still writable
+        
         if (res.destroyed || res.closed) {
           return false;
         }
         return true;
       };
 
-      // Check if we have cached topics and videos (unless regenerating)
+      
       let topics: string[] = [];
 
       if (!regenerate) {
-        // Try to get cached topics
+        
         const cachedTopics = await storage.getMaterialTopics(materialId);
         if (cachedTopics && cachedTopics.topics) {
           topics = cachedTopics.topics as string[];
           console.log(`Using cached topics (${topics.length}) for material ${materialId}`);
         }
       } else {
-        // Delete existing cache if regenerating
+        
         await storage.deleteMaterialTopics(materialId);
         await storage.deleteYoutubeRecommendationsByMaterial(materialId);
       }
 
-      // If no cached topics, extract them from PDF
+      
       if (topics.length === 0) {
         res.write(`data: ${JSON.stringify({ type: 'status', message: 'Extracting topics from PDF...' })}\n\n`);
 
-        // Get or upload PDF to Gemini File API
+        
         let geminiFileUri: string | null = material.geminiFileUri || null;
         let geminiMimeType: string | null = null;
 
@@ -246,7 +246,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           geminiMimeType = 'application/pdf';
         }
 
-        // Extract topics using Gemini
+        
         const topicExtractionPrompt = `Analyze the attached PDF document and extract all the main topics, concepts, and subjects covered in it. 
       
 Return ONLY a JSON array of topic strings, where each topic is a clear, concise description of a main subject or concept from the document.
@@ -281,7 +281,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
           throw new Error("Failed to parse topics from AI response");
         }
 
-        // Store topics in DB
+        
         await storage.createOrUpdateMaterialTopics({
           materialId,
           topics: topics as any,
@@ -290,7 +290,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
         res.write(`data: ${JSON.stringify({ type: 'status', message: `Found ${topics.length} topics. Searching for videos...` })}\n\n`);
       }
 
-      // Helper function to parse duration (ISO 8601 format: PT1H2M10S)
+      
       const parseDuration = (duration: string): number => {
         const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
         if (match) {
@@ -302,14 +302,14 @@ Do not include any additional text, explanations, or markdown formatting - just 
         return 0;
       };
 
-      // Helper function to search YouTube without API (web scraping)
+      
       const searchYouTube = async (query: string, retries = 2): Promise<any[]> => {
         for (let i = 0; i <= retries; i++) {
           try {
-            // Construct YouTube search URL
+            
             const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
             
-            // Fetch the search page with proper headers to avoid bot detection
+            
             const response = await fetch(searchUrl, {
               headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -326,11 +326,11 @@ Do not include any additional text, explanations, or markdown formatting - just 
 
             const html = await response.text();
             
-            // Extract ytInitialData from the HTML
-            // YouTube embeds video data in a script tag: var ytInitialData = {...}
+            
+            
             const ytInitialDataMatch = html.match(/var ytInitialData = ({.+?});/s);
             if (!ytInitialDataMatch) {
-              // Try alternative pattern
+              
               const altMatch = html.match(/window\["ytInitialData"\] = ({.+?});/s);
               if (!altMatch) {
                 throw new Error('Could not find ytInitialData in YouTube page');
@@ -346,37 +346,37 @@ Do not include any additional text, explanations, or markdown formatting - just 
               console.error(`Error searching YouTube for "${query}":`, error.message);
               return [];
             }
-            // Exponential backoff: wait 1s, 2s
+            
             await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
           }
         }
         return [];
       };
 
-      // Helper function to extract video information from YouTube's embedded data
+      
       const extractVideosFromData = (data: any): any[] => {
         const videos: any[] = [];
         
         try {
-          // Try multiple possible data structures (YouTube changes their structure)
+          
           let contents: any[] = [];
           
-          // Method 1: Standard structure
+          
           if (data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents) {
             contents = data.contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer.contents;
           }
-          // Method 2: Alternative structure
+          
           else if (data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.richGridRenderer?.contents) {
             contents = data.contents.twoColumnSearchResultsRenderer.primaryContents.richGridRenderer.contents;
           }
-          // Method 3: Direct contents
+          
           else if (Array.isArray(data?.contents)) {
             contents = data.contents;
           }
           
-          // Recursively search for videoRenderer in the data structure
+          
           const findVideoRenderers = (obj: any, depth = 0): any[] => {
-            if (depth > 10) return []; // Prevent infinite recursion
+            if (depth > 10) return []; 
             
             const renderers: any[] = [];
             
@@ -410,13 +410,13 @@ Do not include any additional text, explanations, or markdown formatting - just 
             
             const videoId = videoRenderer.videoId;
             
-            // Validate video ID format (must be 11 characters, alphanumeric + _ and -)
+            
             if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
               console.warn(`Invalid video ID format: ${videoId}`);
               continue;
             }
             
-            // Skip if video is marked as unavailable or private
+            
             if (videoRenderer.unplayableText || videoRenderer.thumbnailOverlays?.some((overlay: any) => 
               overlay.thumbnailOverlayUnplayableStatusRenderer)) {
               continue;
@@ -425,18 +425,18 @@ Do not include any additional text, explanations, or markdown formatting - just 
             const title = videoRenderer.title?.runs?.[0]?.text || videoRenderer.title?.simpleText || '';
             const channelTitle = videoRenderer.ownerText?.runs?.[0]?.text || videoRenderer.channelName?.simpleText || '';
             
-            // Skip if no title (likely invalid)
+            
             if (!title || title.trim().length === 0) {
               continue;
             }
             
-            // Get thumbnail (prefer high quality)
+            
             let thumbnail = '';
             if (videoRenderer.thumbnail?.thumbnails?.length > 0) {
               thumbnail = videoRenderer.thumbnail.thumbnails[videoRenderer.thumbnail.thumbnails.length - 1]?.url || '';
             }
             
-            // Parse duration from lengthText (e.g., "10:30" or "1:23:45")
+            
             const lengthText = videoRenderer.lengthText?.simpleText || '';
             let durationSeconds = 0;
             if (lengthText) {
@@ -448,14 +448,14 @@ Do not include any additional text, explanations, or markdown formatting - just 
               }
             }
 
-            // Get view count if available
+            
             const viewCountText = videoRenderer.viewCountText?.simpleText || 
                                  videoRenderer.viewCountText?.runs?.[0]?.text || 
                                  videoRenderer.shortViewCountText?.simpleText || 
                                  '0';
             const viewCount = parseViewCount(viewCountText);
 
-            // Get description
+            
             const description = videoRenderer.descriptionSnippet?.runs?.map((r: any) => r.text).join('') || 
                                videoRenderer.descriptionSnippet?.simpleText || 
                                '';
@@ -477,7 +477,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
         return videos;
       };
 
-      // Helper function to parse view count (e.g., "1.2M views" -> 1200000)
+      
       const parseViewCount = (text: string): number => {
         const clean = text.replace(/[^0-9.,KMkm]/g, '');
         if (!clean) return 0;
@@ -493,19 +493,19 @@ Do not include any additional text, explanations, or markdown formatting - just 
         return Math.floor(num);
       };
 
-      // Helper function to validate video ID and check if video is available
+      
       const validateVideoId = async (videoId: string): Promise<boolean> => {
         try {
-          // Validate video ID format (YouTube IDs are 11 characters)
+          
           if (!videoId || videoId.length !== 11 || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
             return false;
           }
 
-          // Check video availability using YouTube's oEmbed endpoint (no API key needed)
-          // This is a lightweight check that doesn't count against API quota
+          
+          
           const oEmbedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
           
-          // Create abort controller for timeout
+          
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 5000);
           
@@ -520,18 +520,18 @@ Do not include any additional text, explanations, or markdown formatting - just 
           clearTimeout(timeoutId);
 
           if (!response.ok) {
-            // 404 or other errors mean video is unavailable
+            
             return false;
           }
 
-          // Try to parse the response to ensure it's valid
+          
           const data = await response.json();
           return !!(data && data.html);
         } catch (error: any) {
-          // Timeout or network errors - assume video might be available but skip validation
+          
           if (error.name === 'AbortError' || error.name === 'TimeoutError') {
             console.warn(`Timeout validating video ${videoId}, skipping validation`);
-            // Return true to allow the video through if validation times out
+            
             return true;
           }
           console.error(`Error validating video ${videoId}:`, error.message);
@@ -539,13 +539,13 @@ Do not include any additional text, explanations, or markdown formatting - just 
         }
       };
 
-      // Helper function to calculate relevance score between topic and video
+      
       const calculateRelevance = (topic: string, videoTitle: string, videoDescription: string): number => {
         const topicLower = topic.toLowerCase();
         const titleLower = videoTitle.toLowerCase();
         const descLower = videoDescription.toLowerCase();
         
-        // Extract key terms from topic (remove common words)
+        
         const commonWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from'];
         const topicWords = topicLower
           .split(/[\s,()]+/)
@@ -556,26 +556,26 @@ Do not include any additional text, explanations, or markdown formatting - just 
         
         for (const word of topicWords) {
           if (titleLower.includes(word)) {
-            score += 3; // Title matches are more important
+            score += 3; 
             matches++;
           } else if (descLower.includes(word)) {
-            score += 1; // Description matches are less important
+            score += 1; 
             matches++;
           }
         }
         
-        // Bonus for exact phrase match
+        
         if (titleLower.includes(topicLower) || descLower.includes(topicLower)) {
           score += 5;
         }
         
-        // Normalize by topic word count
+        
         const normalizedScore = topicWords.length > 0 ? (score / topicWords.length) : 0;
         
         return normalizedScore;
       };
 
-      // Step 1: Check cache and collect topics that need searching
+      
       const topicsToSearch: string[] = [];
       const cachedRecsMap: Map<string, any> = new Map();
 
@@ -592,7 +592,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
               description: existing.description || "",
             };
             cachedRecsMap.set(topic, cachedRec);
-            // Send cached recommendation immediately
+            
             res.write(`data: ${JSON.stringify({ type: 'video', recommendation: cachedRec })}\n\n`);
             continue;
           }
@@ -600,7 +600,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
         topicsToSearch.push(topic);
       }
 
-      // If all topics are cached, we're done
+      
       if (topicsToSearch.length === 0) {
         res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);
         res.end();
@@ -609,11 +609,11 @@ Do not include any additional text, explanations, or markdown formatting - just 
 
       res.write(`data: ${JSON.stringify({ type: 'status', message: `Searching for ${topicsToSearch.length} topics...` })}\n\n`);
 
-      // Step 2: Perform searches using web scraping (no API calls!)
+      
       const topicToVideo: Map<string, any> = new Map();
       
       for (let i = 0; i < topicsToSearch.length; i++) {
-        // Check if client disconnected before processing each topic
+        
         if (!shouldContinue()) {
           console.log('Stopping search - client disconnected');
           break;
@@ -621,17 +621,17 @@ Do not include any additional text, explanations, or markdown formatting - just 
 
         const topic = topicsToSearch[i];
         try {
-          // Add delay between requests to be respectful (500ms delay)
+          
           if (i > 0) {
             await new Promise(resolve => setTimeout(resolve, 500));
-            // Check again after delay
+            
             if (!shouldContinue()) {
               break;
             }
           }
 
-          // Build more specific search query with context from material title
-          // Include material title context if available to improve relevance
+          
+          
           const materialContext = material.title ? ` ${material.title}` : '';
           const searchQuery = `${topic}${materialContext} lecture tutorial educational course explanation`;
           
@@ -641,31 +641,31 @@ Do not include any additional text, explanations, or markdown formatting - just 
           
           const videos = await searchYouTube(searchQuery);
           
-          // Check again after search
+          
           if (!shouldContinue()) {
             break;
           }
           
           if (videos && videos.length > 0) {
-            // Filter and score videos for relevance
+            
             const validVideos: Array<{ video: any; relevance: number; score: number }> = [];
             
             for (const video of videos) {
-              // Only consider long-form videos (>60 seconds)
+              
               if (video.duration <= 60) continue;
               
-              // Validate video ID
+              
               const isValid = await validateVideoId(video.videoId);
               if (!isValid) {
                 console.warn(`Skipping invalid/unavailable video: ${video.videoId}`);
                 continue;
               }
               
-              // Calculate relevance score
+              
               const relevance = calculateRelevance(topic, video.title, video.description);
               
-              // Combined score: relevance (70%) + view count normalized (30%)
-              // Normalize view count (assume max 10M views for normalization)
+              
+              
               const normalizedViews = Math.min(video.viewCount / 10000000, 1) * 30;
               const combinedScore = (relevance * 70) + normalizedViews;
               
@@ -676,22 +676,22 @@ Do not include any additional text, explanations, or markdown formatting - just 
               });
             }
 
-            // Sort by combined score and select the best one
+            
             validVideos.sort((a, b) => b.score - a.score);
             
-            // Only use videos with minimum relevance (at least 1 matching word)
+            
             const bestMatch = validVideos.find(v => v.relevance > 0);
             
             if (bestMatch) {
               const bestVideo = bestMatch.video;
               topicToVideo.set(topic, bestVideo);
               
-              // Check if client is still connected before storing and sending
+              
               if (!shouldContinue()) {
                 break;
               }
 
-              // Send immediately (lazy loading)
+              
               const recommendation = {
                 topic: topic,
                 videoId: bestVideo.videoId,
@@ -701,7 +701,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
                 description: bestVideo.description || "",
               };
 
-              // Store in DB (only if client still connected)
+              
               try {
                 await storage.createYoutubeRecommendation({
                   materialId,
@@ -726,23 +726,23 @@ Do not include any additional text, explanations, or markdown formatting - just 
             }
           }
         } catch (error: any) {
-          // Don't log if client disconnected
+          
           if (!clientDisconnected) {
             console.error(`Error searching YouTube for topic "${topic}":`, error.message);
           }
-          // Continue with other topics only if client still connected
+          
           if (!shouldContinue()) {
             break;
           }
         }
       }
 
-      // Only send complete if client is still connected
+      
       if (shouldContinue()) {
         res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);
         res.end();
       } else {
-        // Client disconnected, just end the response
+        
         res.end();
       }
     } catch (error: any) {
@@ -765,7 +765,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
         return res.status(400).json({ message: "Only PDF files are allowed" });
       }
 
-      // Ensure user exists in database before creating study material
+      
       let user = await storage.getUser(userId);
       if (!user) {
         user = await storage.upsertUser({
@@ -777,7 +777,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
         });
       }
 
-      // Use UploadThing for file storage
+      
       const { utapi } = await import("./uploadthing");
       
       if (!utapi) {
@@ -786,41 +786,41 @@ Do not include any additional text, explanations, or markdown formatting - just 
 
       const sanitizedFilename = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
       
-      // Create a File object for UploadThing
-      // File is available in Node.js 18+ globally
+      
+      
       const fileForUpload = new File([file.buffer], sanitizedFilename, { 
         type: file.mimetype,
         lastModified: Date.now(),
       });
       
-      // Upload file to UploadThing
-      // uploadFiles returns a single result for single file, array for multiple
+      
+      
       const uploadResult = await utapi.uploadFiles(fileForUpload);
 
-      // Use ufsUrl instead of url (deprecated in v9)
+      
       const fileUrl = uploadResult?.data?.ufsUrl || uploadResult?.data?.url;
       
       if (!uploadResult || !uploadResult.data || !fileUrl) {
         throw new Error("File failed to upload to UploadThing");
       }
 
-      // Extract PDF text for AI context (async, don't block upload)
+      
       let extractedText: string | null = null;
       try {
-        // Use dynamic import with proper handling for pdf-parse
+        
         const pdfParseModule = await import("pdf-parse");
         const pdfParse = (pdfParseModule as any).default || pdfParseModule;
         if (pdfParse && typeof pdfParse === 'function') {
           const pdfData = await pdfParse(file.buffer);
           extractedText = pdfData?.text || "";
-          // Limit to first 100k characters to avoid token limits
+          
           if (extractedText && extractedText.length > 100000) {
             extractedText = extractedText.substring(0, 100000) + "... [truncated]";
           }
         }
       } catch (pdfError) {
         console.error("Error extracting PDF text:", pdfError);
-        // Continue without extracted text - can be extracted later
+        
       }
 
       const material = await storage.createStudyMaterial({
@@ -840,9 +840,9 @@ Do not include any additional text, explanations, or markdown formatting - just 
   });
 
   app.get("/objects/:objectPath(*)", isAuthenticated, async (req: any, res) => {
-    // For UploadThing, files are accessed directly via their URLs
-    // This route is kept for backward compatibility but redirects to the stored URL
-    // In practice, files stored via UploadThing should be accessed directly via their URLs
+    
+    
+    
     return res.status(404).json({ message: "File not found. Files are accessed via their UploadThing URLs." });
   });
 
@@ -852,7 +852,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
       if (!material) {
         return res.status(404).json({ message: "Study material not found" });
       }
-      // Verify ownership
+      
       if (material.userId !== req.user.id) {
         return res.status(403).json({ message: "Forbidden" });
       }
@@ -864,7 +864,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
     }
   });
 
-  // Flashcard routes
+  
   app.get("/api/flashcards", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -891,7 +891,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
         return res.status(404).json({ message: "Study material not found" });
       }
 
-      // Use Gemini to generate flashcards
+      
       const prompt = `Generate ${count} flashcards from this study material titled "${material.title}". 
       Return ONLY a JSON array with objects containing 'question' and 'answer' fields. No additional text or markdown formatting.
       Use plain text only - no asterisks, underscores, or markdown syntax.
@@ -903,7 +903,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
       });
       const text = result.text || "";
       
-      // Extract JSON from response
+      
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) {
         throw new Error("Failed to parse AI response");
@@ -911,7 +911,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
       
       const flashcardsData = JSON.parse(jsonMatch[0]);
 
-      // Save flashcards to database with sanitized content
+      
       const createdFlashcards = [];
       for (const card of flashcardsData) {
         const flashcard = await storage.createFlashcard({
@@ -957,7 +957,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
     }
   });
 
-  // Quiz routes
+  
   app.get("/api/quizzes", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -997,18 +997,18 @@ Do not include any additional text, explanations, or markdown formatting - just 
         return res.status(404).json({ message: "Study material not found" });
       }
 
-      // Get or upload PDF to Gemini File API (same logic as chat endpoint)
+      
       let geminiFileUri: string | null = material.geminiFileUri || null;
       let geminiMimeType: string | null = null;
       
-      // If we don't have a Gemini file URI, upload the PDF now
+      
       if (!geminiFileUri) {
         try {
           const fileUrl = material.fileUrl;
           if (fileUrl) {
             console.log("Uploading PDF to Gemini File API for quiz generation...");
             
-            // Download PDF from UploadThing
+            
             const pdfBuffer = await fetch(fileUrl).then((response) => {
               if (!response.ok) {
                 throw new Error(`Failed to download PDF: ${response.statusText}`);
@@ -1016,10 +1016,10 @@ Do not include any additional text, explanations, or markdown formatting - just 
               return response.arrayBuffer();
             });
 
-            // Create a Blob from the PDF buffer
+            
             const fileBlob = new Blob([pdfBuffer], { type: 'application/pdf' });
 
-            // Upload to Gemini File API
+            
             const file = await genAI.files.upload({
               file: fileBlob,
               config: {
@@ -1027,7 +1027,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
               },
             });
 
-            // Wait for the file to be processed
+            
             if (!file.name) {
               throw new Error("Failed to get file name from Gemini upload response");
             }
@@ -1050,7 +1050,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
               throw new Error("Failed to get file URI from Gemini upload response");
             }
 
-            // Store the Gemini file URI in the database
+            
             await db.update(studyMaterials)
               .set({ geminiFileUri })
               .where(eq(studyMaterials.id, material.id));
@@ -1066,10 +1066,10 @@ Do not include any additional text, explanations, or markdown formatting - just 
         geminiMimeType = 'application/pdf';
         console.log("Using existing Gemini file URI for quiz generation:", geminiFileUri);
         
-        // Verify the file is still accessible and ready
+        
         try {
           if (geminiFileUri) {
-            // Extract file name from URI (format: files/xxx)
+            
             const fileNameMatch = geminiFileUri.match(/files\/([^\/]+)/);
             if (fileNameMatch) {
               const fileName = fileNameMatch[1];
@@ -1082,11 +1082,11 @@ Do not include any additional text, explanations, or markdown formatting - just 
           }
         } catch (verifyError) {
           console.error("Error verifying file status:", verifyError);
-          // Continue anyway - file might still be accessible
+          
         }
       }
 
-      // Build prompt with explicit PDF file reference
+      
       const prompt = `You are analyzing the attached PDF document. Based ONLY on the content of this PDF, generate ${questionCount} multiple choice quiz questions that test understanding of the key concepts, facts, and information presented in the document.
 
 IMPORTANT: 
@@ -1099,13 +1099,13 @@ IMPORTANT:
 
 Example format: [{"question": "What is X?", "options": ["A", "B", "C", "D"], "correctAnswer": "A"}, ...]`;
 
-      // Prepare contents array - simple format matching chat endpoint exactly
+      
       const contents: any[] = [];
       
-      // Add prompt first
+      
       contents.push(prompt);
       
-      // Add PDF file reference using createPartFromUri (same as chat endpoint)
+      
       if (geminiFileUri && geminiMimeType) {
         console.log("Adding PDF file to quiz generation request, URI:", geminiFileUri);
         const fileContent = createPartFromUri(geminiFileUri, geminiMimeType);
@@ -1116,14 +1116,14 @@ Example format: [{"question": "What is X?", "options": ["A", "B", "C", "D"], "co
         console.log("Quiz generation contents array: prompt only (1 item)");
       }
 
-      // Use Gemini to generate quiz with PDF content
+      
       const result = await genAI.models.generateContent({
         model: "gemini-2.0-flash",
         contents: contents,
       });
       const text = result.text || "";
       
-      // Extract JSON from response
+      
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) {
         throw new Error("Failed to parse AI response");
@@ -1131,14 +1131,14 @@ Example format: [{"question": "What is X?", "options": ["A", "B", "C", "D"], "co
       
       const questions = JSON.parse(jsonMatch[0]);
 
-      // Sanitize quiz questions and options
+      
       const sanitizedQuestions = questions.map((q: any) => ({
         question: sanitizeMarkdown(q.question || ""),
         options: (q.options || []).map((opt: string) => sanitizeMarkdown(opt)),
         correctAnswer: sanitizeMarkdown(q.correctAnswer || ""),
       }));
 
-      // Save quiz to database
+      
       const quiz = await storage.createQuiz({
         userId,
         materialId,
@@ -1154,7 +1154,7 @@ Example format: [{"question": "What is X?", "options": ["A", "B", "C", "D"], "co
     }
   });
 
-  // Quiz Attempt routes
+  
   app.get("/api/quiz-attempts", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -1173,9 +1173,9 @@ Example format: [{"question": "What is X?", "options": ["A", "B", "C", "D"], "co
       
       const attempt = await storage.createQuizAttempt(attemptData);
 
-      // Update user quiz stats if not cancelled
+      
       if (!attemptData.isCancelled) {
-        // Ensure user exists in database before updating stats
+        
         let user = await storage.getUser(userId);
         if (!user) {
           user = await storage.upsertUser({
@@ -1200,7 +1200,7 @@ Example format: [{"question": "What is X?", "options": ["A", "B", "C", "D"], "co
     }
   });
 
-  // Summary routes
+  
   app.get("/api/summaries", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -1229,21 +1229,21 @@ Example format: [{"question": "What is X?", "options": ["A", "B", "C", "D"], "co
         return res.status(404).json({ message: "Study material not found" });
       }
 
-      // Check if summary already exists
+      
       const existingSummary = await storage.getSummaryByMaterial(materialId);
       if (existingSummary && existingSummary.audioUrl) {
-        // Summary with audio already exists, return it
+        
         return res.json(existingSummary);
       }
       
-      // If summary exists but no audio, we'll regenerate both for consistency
+      
       let content = "";
       if (existingSummary) {
-        // Sanitize existing content in case it has old markdown
+        
         content = sanitizeMarkdown(existingSummary.content);
       } else {
 
-        // Use Gemini to generate an educational summary with examples
+        
         const prompt = `You are an expert tutor helping a student understand the study material titled "${material.title}".
 
 Generate a comprehensive educational summary that:
@@ -1272,27 +1272,27 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         content = sanitizeMarkdown(result.text || "");
       }
 
-      // Generate audio from the summary using Deepgram
-      // Text will be automatically chunked if it exceeds Deepgram's 2000 char limit
+      
+      
       let audioUrl: string | null = null;
       
-      // Only generate audio if Deepgram API key is configured
+      
       if (process.env.DEEPGRAM_API_KEY && process.env.DEEPGRAM_API_KEY !== "your_deepgram_api_key_here") {
         try {
           console.log("Generating audio summary with Deepgram...");
           
-          // Sanitize content for audio - removes markdown and converts symbols to readable text
+          
           const audioText = sanitizeForAudio(content);
           console.log("Text sanitized for audio, length:", audioText.length);
           
           const audioBuffer = await generateAudioFromText({ 
             text: audioText,
-            model: "aura-asteria-en" // Natural, clear voice for educational content
+            model: "aura-asteria-en" 
           });
 
           console.log("Audio buffer generated, size:", audioBuffer.length, "bytes");
 
-          // Upload audio to UploadThing
+          
           const audioFileName = `audio_${materialId}_${Date.now()}.wav`;
           console.log("Uploading audio to UploadThing:", audioFileName);
           
@@ -1301,7 +1301,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
             throw new Error("UploadThing not configured");
           }
           
-          // Create a File object for UploadThing
+          
           const fileForUpload = new File([audioBuffer], audioFileName, { 
             type: "audio/wav",
             lastModified: Date.now(),
@@ -1309,7 +1309,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
           
           const uploadResult = await utapi.uploadFiles(fileForUpload);
           
-          // Use ufsUrl instead of url (deprecated in v9)
+          
           const uploadedUrl = uploadResult?.data?.ufsUrl || uploadResult?.data?.url;
           
           if (!uploadResult || !uploadResult.data || !uploadedUrl) {
@@ -1321,19 +1321,19 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         } catch (audioError) {
           console.error("Error generating audio summary:", audioError);
           console.error("Audio error stack:", audioError instanceof Error ? audioError.stack : "");
-          // Continue without audio if generation fails
+          
         }
       } else {
         console.log("Deepgram API key not configured, skipping audio generation");
       }
 
-      // Save or update summary in database with audio URL
+      
       let summary;
       if (existingSummary) {
-        // Update existing summary with audio URL
+        
         summary = await storage.updateSummary(existingSummary.id, { audioUrl });
       } else {
-        // Create new summary
+        
         summary = await storage.createSummary({
           userId,
           materialId,
@@ -1349,7 +1349,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     }
   });
 
-  // Mind Map routes
+  
   app.get("/api/mind-maps", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -1376,7 +1376,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         return res.status(404).json({ message: "Study material not found" });
       }
 
-      // Use Gemini to generate mind map structure
+      
       const prompt = `Generate a mind map structure for this study material titled "${material.title}". 
       Return ONLY a JSON object with a hierarchical node structure. Each node should have 'id', 'label', and 'children' (array of child nodes).
       Use plain text only for labels - no asterisks, underscores, or markdown syntax.
@@ -1388,7 +1388,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       });
       const text = result.text || "";
       
-      // Extract JSON from response
+      
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         throw new Error("Failed to parse AI response");
@@ -1396,10 +1396,10 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       
       const mindMapContent = JSON.parse(jsonMatch[0]);
 
-      // Recursively sanitize node labels
+      
       const sanitizedContent = sanitizeMindMapNode(mindMapContent);
 
-      // Save mind map to database
+      
       const mindMap = await storage.createMindMap({
         userId,
         materialId,
@@ -1414,21 +1414,21 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     }
   });
 
-  // Chat routes
+  
   app.get("/api/chat/messages", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const { materialId } = req.query;
       
-      // Completely isolated sessions:
-      // - Material-specific chat: only get messages for that material
-      // - General chat: only get messages where materialId IS NULL
+      
+      
+      
       let messages: ChatMessage[];
       if (materialId) {
-        // Material-specific chat - only this material's messages
+        
         messages = await storage.getChatMessagesByMaterial(materialId as string);
       } else {
-        // General chat - only messages without materialId (completely separate)
+        
         messages = await db
           .select()
           .from(chatMessages)
@@ -1452,10 +1452,10 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       const { materialId } = req.query;
       
       if (materialId) {
-        // Delete ALL messages for a specific material (including context messages)
+        
         await storage.deleteChatMessagesByMaterial(materialId as string);
       } else {
-        // Delete all user messages (general conversation) - delete ALL messages without materialId
+        
         await db.delete(chatMessages)
           .where(and(
             eq(chatMessages.userId, userId),
@@ -1470,17 +1470,17 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     }
   });
 
-  // Removed initialize-context endpoint - file upload is now handled automatically in chat message endpoint
+  
 
   app.post("/api/chat/message", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const { materialId, content } = req.body;
 
-      // Sanitize user input
+      
       const sanitizedContent = sanitizeUserInput(content);
 
-      // Save user message
+      
       const userMessage = await storage.createChatMessage({
         userId,
         materialId: materialId || null,
@@ -1488,20 +1488,20 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         content: sanitizedContent,
       });
 
-      // Set up SSE headers for streaming
+      
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      // Get conversation history - completely isolated sessions
-      // General chat (materialId = null) only gets general messages
-      // Material-specific chat only gets that material's messages
+      
+      
+      
       let history: ChatMessage[] = [];
       if (materialId) {
-        // Material-specific chat - only get messages for this specific material
+        
         history = await storage.getChatMessagesByMaterial(materialId);
       } else {
-        // General chat - only get messages where materialId IS NULL
+        
         history = await db
           .select()
           .from(chatMessages)
@@ -1512,7 +1512,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
           .orderBy(asc(chatMessages.createdAt));
       }
 
-      // Get material and upload/retrieve Gemini file URI
+      
       let geminiFileUri: string | null = null;
       let geminiMimeType: string | null = null;
       let material: any = null;
@@ -1522,14 +1522,14 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         if (material) {
           geminiFileUri = material.geminiFileUri || null;
           
-          // If we don't have a Gemini file URI, upload the PDF now
+          
           if (!geminiFileUri) {
             try {
               const fileUrl = material.fileUrl;
               if (fileUrl) {
                 console.log("Uploading PDF to Gemini File API...");
                 
-                // Download PDF from UploadThing
+                
                 const pdfBuffer = await fetch(fileUrl).then((response) => {
                   if (!response.ok) {
                     throw new Error(`Failed to download PDF: ${response.statusText}`);
@@ -1537,10 +1537,10 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
                   return response.arrayBuffer();
                 });
 
-                // Create a Blob from the PDF buffer
+                
                 const fileBlob = new Blob([pdfBuffer], { type: 'application/pdf' });
 
-                // Upload to Gemini File API
+                
                 const file = await genAI.files.upload({
                   file: fileBlob,
                   config: {
@@ -1548,7 +1548,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
                   },
                 });
 
-                // Wait for the file to be processed
+                
                 if (!file.name) {
                   throw new Error("Failed to get file name from Gemini upload response");
                 }
@@ -1571,7 +1571,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
                   throw new Error("Failed to get file URI from Gemini upload response");
                 }
 
-                // Store the Gemini file URI in the database
+                
                 await db.update(studyMaterials)
                   .set({ geminiFileUri })
                   .where(eq(studyMaterials.id, material.id));
@@ -1579,7 +1579,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
               }
             } catch (uploadError) {
               console.error("Error uploading PDF to Gemini:", uploadError);
-              // Continue without PDF if upload fails - user will get an error message
+              
             }
           } else {
             geminiMimeType = 'application/pdf';
@@ -1588,53 +1588,53 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         }
       }
 
-      // Build conversation history for Gemini - simple array format matching reference code
+      
       const contents: any[] = [];
       
-      // Add conversation history (simple string format for streaming)
-      const recentHistory = history.slice(-15); // Get last 15 messages
+      
+      const recentHistory = history.slice(-15); 
       for (const msg of recentHistory) {
         if (msg.role === "user" || msg.role === "assistant") {
           contents.push(msg.content);
         }
       }
       
-      // Add current user message with file reference if we have a material
-      // Always include file in every message to ensure Gemini has access to it
+      
+      
       if (materialId && geminiFileUri && material && geminiMimeType) {
-        // Include user's question
+        
         contents.push(sanitizedContent);
-        // Include file reference using createPartFromUri (matching reference code)
+        
         console.log("Adding file to message, URI:", geminiFileUri);
         const fileContent = createPartFromUri(geminiFileUri, geminiMimeType);
         contents.push(fileContent);
       } else {
-        // Regular message without file
+        
         contents.push(sanitizedContent);
       }
       
       console.log("Final contents array for streaming:", contents.length, "items", 
         materialId ? `(with material: ${material?.title})` : "(no material)");
 
-      // Send user message ID first
+      
       res.write(`data: ${JSON.stringify({ type: "userMessage", message: userMessage })}\n\n`);
 
-      // Send "thinking" event to show loading state
+      
       res.write(`data: ${JSON.stringify({ type: "thinking" })}\n\n`);
 
       let fullResponse = "";
       
-      // Stream the AI response using conversation history
-      // For streaming with file references, use the simple array format (matching reference code)
+      
+      
       let stream;
       if (contents.length > 0) {
-        // Use the contents array directly (simple format for file references)
+        
         stream = await genAI.models.generateContentStream({
           model: "gemini-2.0-flash",
           contents: contents,
         });
       } else {
-        // No conversation history - use simple prompt
+        
         stream = await genAI.models.generateContentStream({
           model: "gemini-2.0-flash",
           contents: `You are a helpful study assistant. Student question: ${sanitizedContent}
@@ -1652,7 +1652,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         }
       }
 
-      // Save the complete AI response
+      
       const assistantMessage = await storage.createChatMessage({
         userId,
         materialId: materialId || null,
@@ -1660,7 +1660,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         content: sanitizeMarkdown(fullResponse),
       });
 
-      // Send completion event with full message
+      
       res.write(`data: ${JSON.stringify({ type: "complete", message: assistantMessage })}\n\n`);
       res.end();
     } catch (error: any) {
@@ -1670,7 +1670,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     }
   });
 
-  // Study Session routes
+  
   app.get("/api/study-sessions", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -1703,16 +1703,16 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
 
       const updates = { ...req.body };
       
-      // Convert endTime string to Date object if provided (Drizzle expects Date, not string)
+      
       if (updates.endTime && typeof updates.endTime === 'string') {
         updates.endTime = new Date(updates.endTime);
       }
       
       const updatedSession = await storage.updateStudySession(req.params.id, updates);
 
-      // Update user stats if session ended
+      
       if (updates.endTime && updates.duration !== undefined) {
-        // Ensure user exists in database before updating stats
+        
         let user = await storage.getUser(req.user.id);
         if (!user) {
           user = await storage.upsertUser({
@@ -1724,46 +1724,58 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
           });
         }
         if (user) {
-          // Calculate effective study time:
-          // - Start with total duration
-          // - Subtract time wasted (tab switches, distractions)
-          // - Penalize tab switches (1 minute per switch)
-          const timeWasted = updates.timeWasted || 0; // in minutes
-          const tabSwitches = updates.tabSwitches || 0;
-          const tabSwitchPenalty = tabSwitches * 1; // 1 minute penalty per tab switch
           
-          // Effective study time = duration - time wasted - tab switch penalties
-          // But ensure it doesn't go negative
+          
+          
+          
+          const timeWasted = updates.timeWasted || 0; 
+          const tabSwitches = updates.tabSwitches || 0;
+          const tabSwitchPenalty = tabSwitches * 1; 
+          
+          
+          
           const effectiveStudyTime = Math.max(0, updates.duration - timeWasted - tabSwitchPenalty);
           
           const totalStudyTime = user.totalStudyTime + effectiveStudyTime;
           
-          // Update streak logic
+          
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           const lastStudy = user.lastStudyDate ? new Date(user.lastStudyDate) : null;
-          lastStudy?.setHours(0, 0, 0, 0);
+          if (lastStudy) lastStudy.setHours(0, 0, 0, 0);
           
           let currentStreak = user.currentStreak;
-          // Min 30 min focused study with no tab switches for streak
-          if (effectiveStudyTime >= 30 && tabSwitches === 0) {
-            if (!lastStudy || lastStudy.getTime() === today.getTime()) {
-              // Same day, no change
-            } else if (lastStudy && (today.getTime() - lastStudy.getTime() === 86400000)) {
-              // Consecutive day
+          let shouldUpdateStreak = false;
+
+          
+          if (effectiveStudyTime >= 1) {
+            shouldUpdateStreak = true;
+            if (!lastStudy) {
+              
+              currentStreak = 1;
+            } else if (lastStudy.getTime() === today.getTime()) {
+              
+              if (currentStreak === 0) currentStreak = 1;
+            } else if (today.getTime() - lastStudy.getTime() === 86400000) {
+              
               currentStreak++;
             } else {
-              // Streak broken
+              
               currentStreak = 1;
             }
           }
 
-          await storage.updateUserStats(req.user.id, {
+          const statsUpdate: any = {
             totalStudyTime,
-            currentStreak,
-            longestStreak: Math.max(currentStreak, user.longestStreak),
-            lastStudyDate: today,
-          });
+          };
+
+          if (shouldUpdateStreak) {
+            statsUpdate.currentStreak = currentStreak;
+            statsUpdate.longestStreak = Math.max(currentStreak, user.longestStreak);
+            statsUpdate.lastStudyDate = today;
+          }
+
+          await storage.updateUserStats(req.user.id, statsUpdate);
         }
       }
 
@@ -1774,7 +1786,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     }
   });
 
-  // Todo routes
+  
   app.get("/api/todos", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -1826,7 +1838,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     }
   });
 
-  // Pomodoro routes
+  
   app.get("/api/pomodoro-sessions", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
@@ -1844,11 +1856,11 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       const sessionData = insertPomodoroSessionSchema.parse({ ...req.body, userId });
       const session = await storage.createPomodoroSession(sessionData);
       
-      // Update study time when pomodoro work cycle completes
-      // Only count work duration, not break time
+      
+      
       const completedCycles = sessionData.completedCycles || 0;
       if (completedCycles > 0 && sessionData.workDuration > 0) {
-        // Ensure user exists in database before updating stats
+        
         let user = await storage.getUser(userId);
         if (!user) {
           user = await storage.upsertUser({
@@ -1860,36 +1872,46 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
           });
         }
         if (user) {
-          // Calculate total work time: workDuration * completedCycles
+          
           const workTimeMinutes = sessionData.workDuration * completedCycles;
           const totalStudyTime = user.totalStudyTime + workTimeMinutes;
           
-          // Update streak logic
+          
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           const lastStudy = user.lastStudyDate ? new Date(user.lastStudyDate) : null;
           lastStudy?.setHours(0, 0, 0, 0);
           
           let currentStreak = user.currentStreak;
-          // Min 30 min focused study for streak
-          if (workTimeMinutes >= 30) {
-            if (!lastStudy || lastStudy.getTime() === today.getTime()) {
-              // Same day, no change
-            } else if (lastStudy && (today.getTime() - lastStudy.getTime() === 86400000)) {
-              // Consecutive day
+          let shouldUpdateStreak = false;
+
+          
+          if (workTimeMinutes >= 1) {
+            shouldUpdateStreak = true;
+            if (!lastStudy) {
+              currentStreak = 1;
+            } else if (lastStudy.getTime() === today.getTime()) {
+              if (currentStreak === 0) currentStreak = 1;
+            } else if (today.getTime() - lastStudy.getTime() === 86400000) {
+              
               currentStreak++;
             } else {
-              // Streak broken
+              
               currentStreak = 1;
             }
           }
 
-          await storage.updateUserStats(userId, {
+          const statsUpdate: any = {
             totalStudyTime,
-            currentStreak,
-            longestStreak: Math.max(currentStreak, user.longestStreak),
-            lastStudyDate: today,
-          });
+          };
+
+          if (shouldUpdateStreak) {
+            statsUpdate.currentStreak = currentStreak;
+            statsUpdate.longestStreak = Math.max(currentStreak, user.longestStreak);
+            statsUpdate.lastStudyDate = today;
+          }
+
+          await storage.updateUserStats(userId, statsUpdate);
         }
       }
       
@@ -1900,20 +1922,20 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     }
   });
 
-  // Leaderboard routes
+  
   app.get("/api/leaderboard/study-time", isAuthenticated, async (req: any, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       const topUsers = await storage.getTopUsersByStudyTime(limit);
       
-      // Transform data to match frontend expectations
+      
       const leaderboard = topUsers.map(user => ({
         userId: user.id,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
         profileImageUrl: user.profileImageUrl,
-        totalTime: user.totalStudyTime, // in minutes
+        totalTime: user.totalStudyTime, 
       }));
       
       res.json(leaderboard);
@@ -1928,7 +1950,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       const limit = parseInt(req.query.limit as string) || 50;
       const topUsers = await storage.getTopUsersByQuizScore(limit);
       
-      // Transform data to match frontend expectations
+      
       const leaderboard = topUsers.map(user => ({
         userId: user.id,
         email: user.email,
@@ -1948,12 +1970,12 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     }
   });
 
-  // Collaboration Session routes
+  
   app.post("/api/collab/sessions", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
       
-      // Ensure user exists in database before creating session
+      
       let user = await storage.getUser(userId);
       if (!user) {
         user = await storage.upsertUser({
@@ -1964,7 +1986,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
           profileImageUrl: req.user.profileImageUrl || undefined,
         });
       } else {
-        // Update user info from Clerk if changed
+        
         user = await storage.upsertUser({
           id: userId,
           email: req.user.email,
@@ -1982,13 +2004,13 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       });
       const session = await storage.createCollabSession(sessionData);
       
-      // Create whiteboard for session
+      
       await storage.createCollabWhiteboard({
         sessionId: session.id,
         content: { elements: [] },
       });
       
-      // Add host as participant
+      
       await storage.createCollabParticipant({
         sessionId: session.id,
         userId,
@@ -2052,23 +2074,23 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         return res.status(403).json({ message: "Only the host can end the session" });
       }
       
-      // Update study time for all participants if concentration mode was on
+      
       if (session.concentrationMode) {
         const participants = await storage.getCollabParticipantsBySession(req.params.id);
         const sessionEndTime = new Date();
         
         for (const participant of participants) {
           try {
-            // Calculate time spent in session (in minutes)
+            
             const joinTime = participant.joinedAt ? new Date(participant.joinedAt).getTime() : (session.createdAt ? new Date(session.createdAt).getTime() : Date.now());
             const endTime = sessionEndTime.getTime();
             const totalMinutes = Math.floor((endTime - joinTime) / (1000 * 60));
             
-            // Calculate effective study time:
-            // - Subtract break time
-            // - Penalize tab switches (1 minute per switch)
+            
+            
+            
             const breakTimeMinutes = Math.floor(participant.breakDuration / 60);
-            const tabSwitchPenalty = participant.tabSwitches * 1; // 1 minute per tab switch
+            const tabSwitchPenalty = participant.tabSwitches * 1; 
             const effectiveStudyTime = Math.max(0, totalMinutes - breakTimeMinutes - tabSwitchPenalty);
             
             if (effectiveStudyTime > 0) {
@@ -2076,32 +2098,41 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
               if (user) {
                 const totalStudyTime = user.totalStudyTime + effectiveStudyTime;
                 
-                // Update streak logic
+                
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
                 const lastStudy = user.lastStudyDate ? new Date(user.lastStudyDate) : null;
                 lastStudy?.setHours(0, 0, 0, 0);
                 
                 let currentStreak = user.currentStreak;
-                // Min 30 min focused study with no tab switches for streak
-                if (effectiveStudyTime >= 30 && participant.tabSwitches === 0) {
-                  if (!lastStudy || lastStudy.getTime() === today.getTime()) {
-                    // Same day, no change
-                  } else if (lastStudy && (today.getTime() - lastStudy.getTime() === 86400000)) {
-                    // Consecutive day
+                let shouldUpdateStreak = false;
+
+                if (effectiveStudyTime >= 1) {
+                  shouldUpdateStreak = true;
+                  if (!lastStudy) {
+                    currentStreak = 1;
+                  } else if (lastStudy.getTime() === today.getTime()) {
+                    if (currentStreak === 0) currentStreak = 1;
+                  } else if (today.getTime() - lastStudy.getTime() === 86400000) {
+                    
                     currentStreak++;
                   } else {
-                    // Streak broken
+                    
                     currentStreak = 1;
                   }
                 }
 
-                await storage.updateUserStats(participant.userId, {
+                const statsUpdate: any = {
                   totalStudyTime,
-                  currentStreak,
-                  longestStreak: Math.max(currentStreak, user.longestStreak),
-                  lastStudyDate: today,
-                });
+                };
+
+                if (shouldUpdateStreak) {
+                  statsUpdate.currentStreak = currentStreak;
+                  statsUpdate.longestStreak = Math.max(currentStreak, user.longestStreak);
+                  statsUpdate.lastStudyDate = today;
+                }
+
+                await storage.updateUserStats(participant.userId, statsUpdate);
               }
             }
           } catch (error) {
@@ -2112,7 +2143,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       
       const endedSession = await storage.endCollabSession(req.params.id);
       
-      // Notify all connected clients that the session has ended
+      
       notifySessionEnded(req.params.id);
       
       res.json(endedSession);
@@ -2122,13 +2153,13 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     }
   });
 
-  // Collaboration Participant routes
+  
   app.post("/api/collab/sessions/:id/join", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const sessionId = req.params.id;
       
-      // Ensure user exists in database before joining
+      
       let user = await storage.getUser(userId);
       if (!user) {
         user = await storage.upsertUser({
@@ -2139,7 +2170,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
           profileImageUrl: req.user.profileImageUrl || undefined,
         });
       } else {
-        // Update user info from Clerk if changed
+        
         user = await storage.upsertUser({
           id: userId,
           email: req.user.email,
@@ -2154,7 +2185,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         return res.status(404).json({ message: "Session not found or inactive" });
       }
       
-      // Check if already a participant
+      
       const existing = await storage.getCollabParticipantByUserAndSession(userId, sessionId);
       if (existing) {
         return res.json(existing);
@@ -2178,7 +2209,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     try {
       const participants = await storage.getActiveCollabParticipantsBySession(req.params.id);
       
-      // Fetch user details for each participant
+      
       const participantsWithUsers = await Promise.all(
         participants.map(async (p) => {
           const user = await storage.getUser(p.userId);
@@ -2193,7 +2224,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     }
   });
 
-  // Collaboration Whiteboard routes
+  
   app.get("/api/collab/sessions/:id/whiteboard", isAuthenticated, async (req: any, res) => {
     try {
       const whiteboard = await storage.getCollabWhiteboardBySession(req.params.id);
@@ -2218,7 +2249,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
     }
   });
 
-  // Collaboration Activity routes
+  
   app.get("/api/collab/sessions/:id/activities", isAuthenticated, async (req: any, res) => {
     try {
       const activities = await storage.getCollabActivitiesBySession(req.params.id);
@@ -2231,7 +2262,7 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
 
   const httpServer = createServer(app);
   
-  // Setup WebSocket for collaboration
+  
   setupCollabWebSocket(httpServer);
   
   return httpServer;

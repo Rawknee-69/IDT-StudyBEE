@@ -49,7 +49,7 @@ export default function Resources() {
     enabled: isAuthenticated,
   });
 
-  // Cleanup on unmount
+  
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
@@ -60,16 +60,16 @@ export default function Resources() {
   }, []);
 
   const loadRecommendations = async (material: StudyMaterial, regenerate: boolean = false) => {
-    // Cancel any existing request
+    
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
 
-    // Create new AbortController for this request
+    
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
-    // Reset state
+    
     setRecommendations([]);
     setIsLoadingRecommendations(true);
     setIsComplete(false);
@@ -83,7 +83,7 @@ export default function Resources() {
 
       const url = `/api/resources/youtube-recommendations/${material.id}${regenerate ? '?regenerate=true' : ''}`;
       
-      // Use fetch with streaming and abort signal
+      
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -105,7 +105,7 @@ export default function Resources() {
       let buffer = '';
 
       while (true) {
-        // Check if request was aborted
+        
         if (abortController.signal.aborted) {
           reader.cancel();
           break;
@@ -123,7 +123,7 @@ export default function Resources() {
             try {
               const data = JSON.parse(line.slice(6));
               
-              // Don't update state if request was aborted
+              
               if (abortController.signal.aborted) {
                 break;
               }
@@ -132,7 +132,7 @@ export default function Resources() {
                 setStatusMessage(data.message);
               } else if (data.type === 'video') {
                 setRecommendations(prev => {
-                  // Avoid duplicates
+                  
                   if (prev.some(r => r.videoId === data.recommendation.videoId)) {
                     return prev;
                   }
@@ -151,7 +151,7 @@ export default function Resources() {
         }
       }
     } catch (error: any) {
-      // Don't show error if request was aborted (user closed dialog)
+      
       if (error.name === 'AbortError' || abortController.signal.aborted) {
         console.log('Request cancelled by user');
         setIsLoadingRecommendations(false);
@@ -166,7 +166,7 @@ export default function Resources() {
       });
       setIsLoadingRecommendations(false);
     } finally {
-      // Clear abort controller if this was the active request
+      
       if (abortControllerRef.current === abortController) {
         abortControllerRef.current = null;
       }
@@ -186,7 +186,7 @@ export default function Resources() {
   };
 
   const handleDialogClose = () => {
-    // Cancel any ongoing requests
+    
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;

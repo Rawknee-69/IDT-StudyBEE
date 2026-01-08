@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* LIGHT MODE */
+
 :root {
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
@@ -10,7 +10,7 @@
   
   --opaque-button-border-intensity: -8; 
 
-  /* Backgrounds applied on top of other backgrounds when hovered/active */
+  
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
 
@@ -104,45 +104,45 @@
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
-  /* Automatically computed borders - intensity can be controlled by the user by the --opaque-button-border-intensity setting */
+  
 
-  /* Fallback for older browsers */
+  
   --sidebar-primary-border: hsl(var(--sidebar-primary));
   --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
-  /* Fallback for older browsers */
+  
   --sidebar-accent-border: hsl(var(--sidebar-accent));
   --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
-  /* Fallback for older browsers */
+  
   --primary-border: hsl(var(--primary));
   --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
-  /* Fallback for older browsers */
+  
   --secondary-border: hsl(var(--secondary));
   --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
-  /* Fallback for older browsers */
+  
   --muted-border: hsl(var(--muted));
   --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
-  /* Fallback for older browsers */
+  
   --accent-border: hsl(var(--accent));
   --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
-  /* Fallback for older browsers */
+  
   --destructive-border: hsl(var(--destructive));
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   
-  /* Fallback for older browsers */
+  
   --success-border: hsl(var(--success));
   --success-border: hsl(from hsl(var(--success)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   
-  /* Fallback for older browsers */
+  
   --warning-border: hsl(var(--warning));
   --warning-border: hsl(from hsl(var(--warning)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   
-  /* Fallback for older browsers */
+  
   --gamification-border: hsl(var(--gamification));
   --gamification-border: hsl(from hsl(var(--gamification)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
@@ -156,7 +156,7 @@
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  /* Very dark background like the image */
+  
   --background: 0 0% 4%; 
   --foreground: 0 0% 98%;
 
@@ -168,19 +168,19 @@
   --popover-foreground: 0 0% 98%;
   --popover-border: 0 0% 12%;
 
-  --primary: 84 81% 55%; /* Neon Green */
+  --primary: 84 81% 55%; 
   --primary-foreground: 0 0% 9%;
 
-  --secondary: 25 95% 53%; /* Orange */
+  --secondary: 25 95% 53%; 
   --secondary-foreground: 0 0% 98%;
 
-  --success: 84 81% 55%; /* Match Primary Neon Green for consistency or distinct neon green */
+  --success: 84 81% 55%; 
   --success-foreground: 0 0% 9%;
 
-  --warning: 43 96% 56%; /* Bright Yellow */
+  --warning: 43 96% 56%; 
   --warning-foreground: 0 0% 9%;
 
-  --gamification: 300 85% 60%; /* Neon Magenta */
+  --gamification: 300 85% 60%; 
   --gamification-foreground: 0 0% 98%;
 
   --muted: 0 0% 12%;
@@ -237,13 +237,13 @@
 @layer base {
   * {
     @apply border-border;
-    /* Hide all scrollbars globally while maintaining scroll functionality */
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    
+    -ms-overflow-style: none;  
+    scrollbar-width: none;  
   }
   
   *::-webkit-scrollbar {
-    display: none;  /* Chrome, Safari and Opera */
+    display: none;  
   }
 
   body {
@@ -251,76 +251,50 @@
   }
 }
 
-/**
- * Using the elevate system.
- * Automatic contrast adjustment.
- *
- * <element className="hover-elevate" />
- * <element className="active-elevate-2" />
- *
- * // Using the tailwind utility when a data attribute is "on"
- * <element className="toggle-elevate data-[state=on]:toggle-elevated" />
- * // Or manually controlling the toggle state
- * <element className="toggle-elevate toggle-elevated" />
- *
- * Elevation systems have to handle many states.
- * - not-hovered, vs. hovered vs. active  (three mutually exclusive states)
- * - toggled or not
- * - focused or not (this is not handled with these utilities)
- *
- * Even without handling focused or not, this is six possible combinations that
- * need to be distinguished from eachother visually.
- */
+
 @layer utilities {
 
-  /* Hide ugly search cancel button in Chrome until we can style it properly */
+  
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;
   }
 
-  /* Placeholder styling for contentEditable div */
+  
   [contenteditable][data-placeholder]:empty::before {
     content: attr(data-placeholder);
     color: hsl(var(--muted-foreground));
     pointer-events: none;
   }
 
-  /* .no-default-hover-elevate/no-default-active-elevate is an escape hatch so consumers of
-   * buttons/badges can remove the automatic brightness adjustment on interactions
-   * and program their own. */
+  
   .no-default-hover-elevate {}
 
   .no-default-active-elevate {}
 
 
-  /**
-   * Toggleable backgrounds go behind the content. Hoverable/active goes on top.
-   * This way they can stack/compound. Both will overlap the parent's borders!
-   * So borders will be automatically adjusted both on toggle, and hover/active,
-   * and they will be compounded.
-   */
+  
   .toggle-elevate::before,
   .toggle-elevate-2::before {
     content: "";
     pointer-events: none;
     position: absolute;
     inset: 0px;
-    /*border-radius: inherit;   match rounded corners */
+    
     border-radius: inherit;
     z-index: -1;
-    /* sits behind content but above backdrop */
+    
   }
 
   .toggle-elevate.toggle-elevated::before {
     background-color: var(--elevate-2);
   }
 
-  /* If there's a 1px border, adjust the inset so that it covers that parent's border */
+  
   .border.toggle-elevate::before {
     inset: -1px;
   }
 
-  /* Does not work on elements with overflow:hidden! */
+  
   .hover-elevate:not(.no-default-hover-elevate),
   .active-elevate:not(.no-default-active-elevate),
   .hover-elevate-2:not(.no-default-hover-elevate),
@@ -337,10 +311,10 @@
     pointer-events: none;
     position: absolute;
     inset: 0px;
-    /*border-radius: inherit;   match rounded corners */
+    
     border-radius: inherit;
     z-index: 999;
-    /* sits in front of content */
+    
   }
 
   .hover-elevate:hover:not(.no-default-hover-elevate)::after,
@@ -353,7 +327,7 @@
     background-color: var(--elevate-2);
   }
 
-  /* If there's a 1px border, adjust the inset so that it covers that parent's border */
+  
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after,
   .border.active-elevate:not(.no-active-interaction-elevate)::after,
   .border.hover-elevate-2:not(.no-hover-interaction-elevate)::after,
@@ -362,20 +336,20 @@
     inset: -1px;
   }
 
-  /* Hide scrollbar but keep functionality */
+  
   .scrollbar-hide {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;  
+    scrollbar-width: none;  
   }
   
   .scrollbar-hide::-webkit-scrollbar {
-    display: none;  /* Chrome, Safari and Opera */
+    display: none;  
   }
 }
 
-/* Clerk Customization - Remove Branding and Match App Theme */
+
 @layer utilities {
-  /* Hide Clerk branding */
+  
   [data-clerk-element="cl-logo"],
   [data-clerk-element="cl-logoBox"],
   .cl-logo,
@@ -392,7 +366,7 @@
     overflow: hidden !important;
   }
 
-  /* Override Clerk modal styles */
+  
   .cl-modalContent,
   [data-clerk-element="cl-modalContent"],
   .cl-modal,
@@ -406,7 +380,7 @@
     overflow: hidden !important;
   }
 
-  /* Ensure modal inner containers also have rounded corners */
+  
   .cl-modalContent > *,
   [data-clerk-element="cl-modalContent"] > *,
   .cl-cardBox,
@@ -414,7 +388,7 @@
     border-radius: var(--radius) !important;
   }
 
-  /* Fix first and last child corners */
+  
   .cl-modalContent > *:first-child,
   [data-clerk-element="cl-modalContent"] > *:first-child {
     border-top-left-radius: var(--radius) !important;
@@ -433,7 +407,7 @@
     backdrop-filter: blur(8px) !important;
   }
 
-  /* Style Clerk cards */
+  
   .cl-card,
   [data-clerk-element="cl-card"],
   .cl-cardBox,
@@ -445,13 +419,13 @@
     overflow: hidden !important;
   }
 
-  /* Ensure card content respects border radius */
+  
   .cl-card > *,
   [data-clerk-element="cl-card"] > * {
     border-radius: inherit !important;
   }
 
-  /* Style Clerk buttons */
+  
   .cl-button,
   [data-clerk-element="cl-button"] {
     font-family: var(--font-heading) !important;
@@ -473,7 +447,7 @@
     box-shadow: var(--shadow-md) !important;
   }
 
-  /* Style Clerk inputs */
+  
   .cl-input,
   [data-clerk-element="cl-input"],
   .cl-fieldInput,
@@ -496,7 +470,7 @@
     outline: none !important;
   }
 
-  /* Style Clerk labels */
+  
   .cl-label,
   [data-clerk-element="cl-label"],
   .cl-fieldLabel,
@@ -506,7 +480,7 @@
     font-weight: 500 !important;
   }
 
-  /* Style Clerk headers */
+  
   .cl-headerTitle,
   [data-clerk-element="cl-headerTitle"] {
     font-family: var(--font-heading) !important;
@@ -519,7 +493,7 @@
     color: hsl(var(--muted-foreground)) !important;
   }
 
-  /* Style Clerk links */
+  
   .cl-link,
   [data-clerk-element="cl-link"],
   .cl-footerActionLink,
@@ -535,7 +509,7 @@
     color: hsl(84, 81%, 50%) !important;
   }
 
-  /* Style Clerk social buttons */
+  
   .cl-socialButtonsBlockButton,
   [data-clerk-element="cl-socialButtonsBlockButton"] {
     background-color: hsl(var(--card)) !important;
@@ -551,7 +525,7 @@
     border-color: hsl(var(--primary)) !important;
   }
 
-  /* Style Clerk OTP code fields */
+  
   .cl-otpCodeFieldInput,
   [data-clerk-element="cl-otpCodeFieldInput"],
   .cl-otpCodeField,
@@ -564,7 +538,7 @@
     color: hsl(var(--foreground)) !important;
   }
 
-  /* Ensure all form elements have rounded corners */
+  
   .cl-formField,
   [data-clerk-element="cl-formField"],
   .cl-formFieldRow,
@@ -572,13 +546,13 @@
     border-radius: var(--radius) !important;
   }
 
-  /* Fix any square corners on modal containers */
+  
   .cl-modalContent *,
   [data-clerk-element="cl-modalContent"] * {
     border-radius: inherit !important;
   }
 
-  /* Ensure header and footer respect border radius */
+  
   .cl-header,
   [data-clerk-element="cl-header"],
   .cl-footer,
@@ -586,7 +560,7 @@
     border-radius: inherit !important;
   }
 
-  /* Style Clerk error messages */
+  
   .cl-alertText,
   [data-clerk-element="cl-alertText"],
   .cl-fieldErrorText,
@@ -594,7 +568,7 @@
     color: hsl(var(--destructive)) !important;
   }
 
-  /* Style Clerk divider */
+  
   .cl-dividerLine,
   [data-clerk-element="cl-dividerLine"] {
     background-color: hsl(var(--border)) !important;
@@ -605,7 +579,7 @@
     color: hsl(var(--muted-foreground)) !important;
   }
 
-  /* Dark mode adjustments */
+  
   .dark .cl-card,
   .dark [data-clerk-element="cl-card"] {
     background-color: hsl(var(--card)) !important;
@@ -618,13 +592,13 @@
     color: hsl(var(--foreground)) !important;
   }
 
-  /* Remove any remaining Clerk branding text */
+  
   *[aria-label*="Clerk"],
   *[title*="Clerk"] {
     display: none !important;
   }
 
-  /* Additional Clerk element hiding */
+  
   [class*="cl-poweredBy"],
   [class*="cl-logo"],
   [id*="clerk-logo"],

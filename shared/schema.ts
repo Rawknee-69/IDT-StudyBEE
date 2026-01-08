@@ -3,7 +3,7 @@ import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, index } fro
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Session storage table (for session management)
+
 export const sessions = pgTable(
   "sessions",
   {
@@ -14,7 +14,7 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// Users table with Clerk Auth integration and degree/class information
+
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").unique(),
@@ -23,9 +23,9 @@ export const users = pgTable("users", {
   profileImageUrl: varchar("profile_image_url"),
   degree: text("degree"),
   className: text("class_name"),
-  totalStudyTime: integer("total_study_time").notNull().default(0), // in minutes
-  currentStreak: integer("current_streak").notNull().default(0), // days
-  longestStreak: integer("longest_streak").notNull().default(0), // days
+  totalStudyTime: integer("total_study_time").notNull().default(0), 
+  currentStreak: integer("current_streak").notNull().default(0), 
+  longestStreak: integer("longest_streak").notNull().default(0), 
   lastStudyDate: timestamp("last_study_date"),
   totalQuizScore: integer("total_quiz_score").notNull().default(0),
   quizzesCompleted: integer("quizzes_completed").notNull().default(0),
@@ -33,20 +33,20 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Study materials (PDFs uploaded by users)
+
 export const studyMaterials = pgTable("study_materials", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   fileName: text("file_name").notNull(),
-  fileUrl: text("file_url").notNull(), // Object storage URL
-  fileSize: integer("file_size").notNull(), // in bytes
-  extractedText: text("extracted_text"), // Cached PDF text content for AI context
-  geminiFileUri: text("gemini_file_uri"), // Gemini File API URI for PDF context
+  fileUrl: text("file_url").notNull(), 
+  fileSize: integer("file_size").notNull(), 
+  extractedText: text("extracted_text"), 
+  geminiFileUri: text("gemini_file_uri"), 
   uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
 });
 
-// Flashcards generated from study materials
+
 export const flashcards = pgTable("flashcards", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -57,18 +57,18 @@ export const flashcards = pgTable("flashcards", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Quizzes with questions and answers
+
 export const quizzes = pgTable("quizzes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   materialId: varchar("material_id").references(() => studyMaterials.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
-  questions: jsonb("questions").notNull(), // Array of {question, options, correctAnswer}
+  questions: jsonb("questions").notNull(), 
   isAIGenerated: boolean("is_ai_generated").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Quiz attempts with scores and tab-switch tracking
+
 export const quizAttempts = pgTable("quiz_attempts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -76,46 +76,46 @@ export const quizAttempts = pgTable("quiz_attempts", {
   score: integer("score").notNull(),
   totalQuestions: integer("total_questions").notNull(),
   tabSwitchCount: integer("tab_switch_count").notNull().default(0),
-  isCancelled: boolean("is_cancelled").notNull().default(false), // Cancelled due to tab switching
+  isCancelled: boolean("is_cancelled").notNull().default(false), 
   completedAt: timestamp("completed_at").notNull().defaultNow(),
 });
 
-// Mind maps generated from study materials
+
 export const mindMaps = pgTable("mind_maps", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   materialId: varchar("material_id").notNull().references(() => studyMaterials.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
-  content: jsonb("content").notNull(), // Node structure for mind map
+  content: jsonb("content").notNull(), 
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// AI-generated summaries
+
 export const summaries = pgTable("summaries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   materialId: varchar("material_id").notNull().references(() => studyMaterials.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
-  audioUrl: text("audio_url"), // URL to Deepgram-generated audio in object storage
+  audioUrl: text("audio_url"), 
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Study sessions for tracking focused time
+
 export const studySessions = pgTable("study_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   startTime: timestamp("start_time").notNull().defaultNow(),
   endTime: timestamp("end_time"),
-  duration: integer("duration").notNull().default(0), // in minutes
+  duration: integer("duration").notNull().default(0), 
   tabSwitches: integer("tab_switches").notNull().default(0),
-  timeWasted: integer("time_wasted").notNull().default(0), // in minutes
+  timeWasted: integer("time_wasted").notNull().default(0), 
   isConcentrationMode: boolean("is_concentration_mode").notNull().default(false),
-  pauseCount: integer("pause_count").notNull().default(0), // number of times paused
-  pauseDuration: integer("pause_duration").notNull().default(0), // total pause time in seconds
-  pauseReasons: jsonb("pause_reasons").default(sql`'[]'::jsonb`), // Array of {reason, duration, timestamp}
+  pauseCount: integer("pause_count").notNull().default(0), 
+  pauseDuration: integer("pause_duration").notNull().default(0), 
+  pauseReasons: jsonb("pause_reasons").default(sql`'[]'::jsonb`), 
 });
 
-// Todo list items
+
 export const todos = pgTable("todos", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -126,75 +126,75 @@ export const todos = pgTable("todos", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Pomodoro sessions
+
 export const pomodoroSessions = pgTable("pomodoro_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  workDuration: integer("work_duration").notNull(), // in minutes
-  breakDuration: integer("break_duration").notNull(), // in minutes
+  workDuration: integer("work_duration").notNull(), 
+  breakDuration: integer("break_duration").notNull(), 
   completedCycles: integer("completed_cycles").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Chat messages with AI
+
 export const chatMessages = pgTable("chat_messages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   materialId: varchar("material_id").references(() => studyMaterials.id, { onDelete: "cascade" }),
-  role: text("role").notNull(), // 'user' or 'assistant'
+  role: text("role").notNull(), 
   content: text("content").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Collaboration sessions for group study
+
 export const collabSessions = pgTable("collab_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   hostUserId: varchar("host_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
-  sessionCode: varchar("session_code", { length: 10 }).notNull().unique(), // For invitations
+  sessionCode: varchar("session_code", { length: 10 }).notNull().unique(), 
   isActive: boolean("is_active").notNull().default(true),
   concentrationMode: boolean("concentration_mode").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   endedAt: timestamp("ended_at"),
 });
 
-// Participants in collaboration sessions
+
 export const collabParticipants = pgTable("collab_participants", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sessionId: varchar("session_id").notNull().references(() => collabSessions.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  role: text("role").notNull().default("member"), // 'host' or 'member'
+  role: text("role").notNull().default("member"), 
   isMuted: boolean("is_muted").notNull().default(false),
   isBanned: boolean("is_banned").notNull().default(false),
   tabSwitches: integer("tab_switches").notNull().default(0),
   pauseCount: integer("pause_count").notNull().default(0),
   isOnBreak: boolean("is_on_break").notNull().default(false),
   breakStartTime: timestamp("break_start_time"),
-  breakDuration: integer("break_duration").notNull().default(0), // in seconds
+  breakDuration: integer("break_duration").notNull().default(0), 
   joinedAt: timestamp("joined_at").notNull().defaultNow(),
   leftAt: timestamp("left_at"),
 });
 
-// Whiteboard data for collaboration sessions
+
 export const collabWhiteboards = pgTable("collab_whiteboards", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sessionId: varchar("session_id").notNull().references(() => collabSessions.id, { onDelete: "cascade" }).unique(),
-  content: jsonb("content").notNull().default(sql`'{}'::jsonb`), // Canvas drawing data
+  content: jsonb("content").notNull().default(sql`'{}'::jsonb`), 
   lastSavedAt: timestamp("last_saved_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Activity tracking for collaboration sessions
+
 export const collabActivities = pgTable("collab_activities", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sessionId: varchar("session_id").notNull().references(() => collabSessions.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  activityType: text("activity_type").notNull(), // 'tab_switch', 'pause', 'unpause', 'break_start', 'break_end', 'join', 'leave'
-  metadata: jsonb("metadata"), // Additional activity data
+  activityType: text("activity_type").notNull(), 
+  metadata: jsonb("metadata"), 
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Group chat messages in collaboration sessions
+
 export const collabChatMessages = pgTable("collab_chat_messages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sessionId: varchar("session_id").notNull().references(() => collabSessions.id, { onDelete: "cascade" }),
@@ -205,24 +205,24 @@ export const collabChatMessages = pgTable("collab_chat_messages", {
   index("idx_chat_session_created").on(table.sessionId, table.createdAt),
 ]);
 
-// Presentation files (pictures/PDFs) shared in collaboration sessions
+
 export const collabPresentations = pgTable("collab_presentations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sessionId: varchar("session_id").notNull().references(() => collabSessions.id, { onDelete: "cascade" }),
   uploadedBy: varchar("uploaded_by").notNull().references(() => users.id, { onDelete: "cascade" }),
   fileName: text("file_name").notNull(),
-  fileUrl: text("file_url").notNull(), // Object storage URL
-  fileType: text("file_type").notNull(), // 'image' or 'pdf'
-  currentPage: integer("current_page").notNull().default(1), // For PDF navigation
-  isActive: boolean("is_active").notNull().default(false), // Currently being presented
+  fileUrl: text("file_url").notNull(), 
+  fileType: text("file_type").notNull(), 
+  currentPage: integer("current_page").notNull().default(1), 
+  isActive: boolean("is_active").notNull().default(false), 
   uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
 }, (table) => [
   index("idx_presentation_session").on(table.sessionId),
-  // Ensure only one active presentation per session
+  
   index("idx_presentation_active_session").on(table.sessionId).where(sql`${table.isActive} = true`),
 ]);
 
-// Presentation editor permissions (normalized join table)
+
 export const collabPresentationEditors = pgTable("collab_presentation_editors", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   presentationId: varchar("presentation_id").notNull().references(() => collabPresentations.id, { onDelete: "cascade" }),
@@ -232,7 +232,7 @@ export const collabPresentationEditors = pgTable("collab_presentation_editors", 
   index("idx_presentation_user").on(table.presentationId, table.userId),
 ]);
 
-// Insert schemas
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   totalStudyTime: true,
@@ -344,7 +344,7 @@ export const insertCollabPresentationEditorSchema = createInsertSchema(collabPre
   grantedAt: true,
 });
 
-// Types
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UpsertUser = z.infer<typeof upsertUserSchema>;
 export type UpdateUserProfile = z.infer<typeof updateUserProfileSchema>;
@@ -356,7 +356,7 @@ export type StudyMaterial = typeof studyMaterials.$inferSelect;
 export type InsertFlashcard = z.infer<typeof insertFlashcardSchema>;
 export type Flashcard = typeof flashcards.$inferSelect;
 
-// Quiz question type structure
+
 export interface QuizQuestion {
   question: string;
   options: string[];
@@ -366,7 +366,7 @@ export interface QuizQuestion {
 export type InsertQuiz = z.infer<typeof insertQuizSchema>;
 export type Quiz = typeof quizzes.$inferSelect;
 
-// Extended Quiz type with properly typed questions array
+
 export interface QuizWithQuestions extends Omit<Quiz, 'questions'> {
   questions: QuizQuestion[];
 }
@@ -413,17 +413,17 @@ export type CollabPresentation = typeof collabPresentations.$inferSelect;
 export type InsertCollabPresentationEditor = z.infer<typeof insertCollabPresentationEditorSchema>;
 export type CollabPresentationEditor = typeof collabPresentationEditors.$inferSelect;
 
-// Extracted topics from study materials (for YouTube recommendations)
+
 export const materialTopics = pgTable("material_topics", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   materialId: varchar("material_id").notNull().references(() => studyMaterials.id, { onDelete: "cascade" }),
-  topics: jsonb("topics").notNull(), // Array of topic strings
+  topics: jsonb("topics").notNull(), 
   extractedAt: timestamp("extracted_at").notNull().defaultNow(),
 }, (table) => [
   index("idx_material_topics_material").on(table.materialId),
 ]);
 
-// YouTube video recommendations for topics
+
 export const youtubeRecommendations = pgTable("youtube_recommendations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   materialId: varchar("material_id").notNull().references(() => studyMaterials.id, { onDelete: "cascade" }),
@@ -434,7 +434,7 @@ export const youtubeRecommendations = pgTable("youtube_recommendations", {
   thumbnail: text("thumbnail").notNull(),
   description: text("description"),
   viewCount: integer("view_count"),
-  duration: integer("duration"), // in seconds
+  duration: integer("duration"), 
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("idx_youtube_recommendations_material").on(table.materialId),

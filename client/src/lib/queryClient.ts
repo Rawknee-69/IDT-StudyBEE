@@ -1,9 +1,9 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-// Helper to get Clerk token from global Clerk instance
+
 export async function getClerkToken(): Promise<string | null> {
   try {
-    // Access the global Clerk instance set by ClerkProvider
+    
     const clerk = (window as any).Clerk;
     if (clerk?.session) {
       return await clerk.session.getToken();
@@ -48,7 +48,7 @@ export async function apiRequest(
   return res;
 }
 
-// Helper for authenticated GET requests
+
 export async function apiGet<T>(url: string): Promise<T> {
   const token = await getClerkToken();
   
