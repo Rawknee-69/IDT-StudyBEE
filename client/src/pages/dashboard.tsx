@@ -7,31 +7,42 @@ import { Button } from "@/components/ui/button";
 import { BookOpen, Brain, FileText, Target, Trophy, Timer, CheckSquare, Flame } from "lucide-react";
 import { Link } from "wouter";
 
-type StudySession = {
-  id: string;
-  duration: number;
-  isConcentrationMode: boolean;
-  startTime: string;
-};
-
 type QuizAttempt = {
   id: string;
   score: number;
   isCancelled: boolean;
 };
 
+type UserStats = {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
+  degree: string | null;
+  className: string | null;
+  totalStudyTime: number; // in minutes
+  currentStreak: number; // days
+  longestStreak: number; // days
+  totalQuizScore: number;
+  quizzesCompleted: number;
+};
+
 export default function Dashboard() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading, user } = useAuth();
 
-  const { data: studySessions } = useQuery<StudySession[]>({
-    queryKey: ["/api/study-sessions"],
+  // Fetch user stats from database (includes totalStudyTime, currentStreak, etc.)
+  const { data: userStats, isLoading: userStatsLoading } = useQuery<UserStats>({
+    queryKey: ["/api/auth/user"],
     enabled: isAuthenticated,
+    retry: false,
   });
 
-  const { data: quizAttempts } = useQuery<QuizAttempt[]>({
+  const { data: quizAttempts, isLoading: quizAttemptsLoading } = useQuery<QuizAttempt[]>({
     queryKey: ["/api/quiz-attempts"],
     enabled: isAuthenticated,
+    retry: false,
   });
 
   useEffect(() => {
@@ -48,60 +59,38 @@ export default function Dashboard() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
-  if (isLoading) {
+  if (isLoading || userStatsLoading || quizAttemptsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          <p className="mt-4 text-muted-foreground">Loading...</p>
+          <p className="mt-4 text-muted-foreground">Loading dashboard...</p>
         </div>
       </div>
     );
   }
 
-  if (!user) {
+  if (!user || !userStats) {
     return null;
   }
 
-  const needsProfile = !user.degree || !user.className;
+  const needsProfile = !userStats.degree || !userStats.className;
 
-  const totalStudyTime = studySessions?.reduce((total, session) => total + session.duration, 0) || 0;
+  // Use totalStudyTime from database (same source as leaderboard)
+  const totalStudyTime = userStats.totalStudyTime || 0;
   
-  const completedQuizzes = quizAttempts?.filter((a) => !a.isCancelled) || [];
-  const averageQuizScore = completedQuizzes.length > 0
-    ? Math.round(completedQuizzes.reduce((sum, a) => sum + a.score, 0) / completedQuizzes.length)
+  // Format study time: convert minutes to hours and minutes (same format as leaderboard)
+  const hours = Math.floor(totalStudyTime / 60);
+  const minutes = totalStudyTime % 60;
+  const formattedStudyTime = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  
+  // Use currentStreak from database (same source as leaderboard)
+  const currentStreak = userStats.currentStreak || 0;
+  
+  // Calculate average quiz score from database stats (same calculation as leaderboard)
+  const averageQuizScore = userStats.quizzesCompleted > 0
+    ? Math.round(userStats.totalQuizScore / userStats.quizzesCompleted)
     : 0;
-
-  const calculateStreak = () => {
-    if (!studySessions || studySessions.length === 0) return 0;
-    
-    const focusSessions = studySessions
-      .filter((s) => s.duration >= 30)
-      .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-    
-    if (focusSessions.length === 0) return 0;
-    
-    let streak = 0;
-    let currentDate = new Date();
-    currentDate.setHours(0, 0, 0, 0);
-    
-    for (const session of focusSessions) {
-      const sessionDate = new Date(session.startTime);
-      sessionDate.setHours(0, 0, 0, 0);
-      
-      const diffDays = Math.floor((currentDate.getTime() - sessionDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      if (diffDays === streak) {
-        streak++;
-      } else if (diffDays > streak) {
-        break;
-      }
-    }
-    
-    return streak;
-  };
-
-  const currentStreak = calculateStreak();
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -134,7 +123,7 @@ export default function Dashboard() {
             </div>
             <div>
               <p className="text-2xl font-bold" data-testid="text-study-time">
-                {Math.floor(totalStudyTime / 60)}h {totalStudyTime % 60}m
+                {formattedStudyTime}
               </p>
               <p className="text-sm text-muted-foreground">Total Study Time</p>
             </div>
