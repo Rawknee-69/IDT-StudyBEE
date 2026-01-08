@@ -39,6 +39,10 @@ import type {
   InsertCollabPresentation,
   CollabPresentationEditor,
   InsertCollabPresentationEditor,
+  MaterialTopics,
+  InsertMaterialTopics,
+  YoutubeRecommendation,
+  InsertYoutubeRecommendation,
 } from "@shared/schema";
 import {
   users,
@@ -59,6 +63,8 @@ import {
   collabChatMessages,
   collabPresentations,
   collabPresentationEditors,
+  materialTopics,
+  youtubeRecommendations,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -197,6 +203,17 @@ export interface IStorage {
   hasCollabPresentationEditPermission(presentationId: string, userId: string): Promise<boolean>;
   grantCollabPresentationEdit(editor: InsertCollabPresentationEditor): Promise<CollabPresentationEditor>;
   revokeCollabPresentationEdit(presentationId: string, userId: string): Promise<void>;
+
+  // Material Topics operations
+  getMaterialTopics(materialId: string): Promise<MaterialTopics | undefined>;
+  createOrUpdateMaterialTopics(topics: InsertMaterialTopics): Promise<MaterialTopics>;
+  deleteMaterialTopics(materialId: string): Promise<void>;
+
+  // YouTube Recommendations operations
+  getYoutubeRecommendationsByMaterial(materialId: string): Promise<YoutubeRecommendation[]>;
+  getYoutubeRecommendationByTopic(materialId: string, topic: string): Promise<YoutubeRecommendation | undefined>;
+  createYoutubeRecommendation(recommendation: InsertYoutubeRecommendation): Promise<YoutubeRecommendation>;
+  deleteYoutubeRecommendationsByMaterial(materialId: string): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -813,6 +830,58 @@ export class DbStorage implements IStorage {
     await db
       .delete(collabPresentationEditors)
       .where(sql`${collabPresentationEditors.presentationId} = ${presentationId} AND ${collabPresentationEditors.userId} = ${userId}`);
+  }
+
+  // Material Topics operations
+  async getMaterialTopics(materialId: string): Promise<MaterialTopics | undefined> {
+    const result = await db
+      .select()
+      .from(materialTopics)
+      .where(eq(materialTopics.materialId, materialId))
+      .orderBy(desc(materialTopics.extractedAt))
+      .limit(1);
+    return result[0];
+  }
+
+  async createOrUpdateMaterialTopics(topics: InsertMaterialTopics): Promise<MaterialTopics> {
+    // Delete existing topics for this material
+    await db.delete(materialTopics).where(eq(materialTopics.materialId, topics.materialId));
+    // Insert new topics
+    const result = await db.insert(materialTopics).values(topics).returning();
+    return result[0];
+  }
+
+  async deleteMaterialTopics(materialId: string): Promise<void> {
+    await db.delete(materialTopics).where(eq(materialTopics.materialId, materialId));
+  }
+
+  // YouTube Recommendations operations
+  async getYoutubeRecommendationsByMaterial(materialId: string): Promise<YoutubeRecommendation[]> {
+    return await db
+      .select()
+      .from(youtubeRecommendations)
+      .where(eq(youtubeRecommendations.materialId, materialId))
+      .orderBy(youtubeRecommendations.createdAt);
+  }
+
+  async getYoutubeRecommendationByTopic(materialId: string, topic: string): Promise<YoutubeRecommendation | undefined> {
+    const result = await db
+      .select()
+      .from(youtubeRecommendations)
+      .where(
+        sql`${youtubeRecommendations.materialId} = ${materialId} AND ${youtubeRecommendations.topic} = ${topic}`
+      )
+      .limit(1);
+    return result[0];
+  }
+
+  async createYoutubeRecommendation(recommendation: InsertYoutubeRecommendation): Promise<YoutubeRecommendation> {
+    const result = await db.insert(youtubeRecommendations).values(recommendation).returning();
+    return result[0];
+  }
+
+  async deleteYoutubeRecommendationsByMaterial(materialId: string): Promise<void> {
+    await db.delete(youtubeRecommendations).where(eq(youtubeRecommendations.materialId, materialId));
   }
 }
 

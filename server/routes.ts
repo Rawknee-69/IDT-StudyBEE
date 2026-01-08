@@ -117,6 +117,398 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // YouTube Recommendations endpoint with streaming and DB caching
+  app.get("/api/resources/youtube-recommendations/:materialId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const materialId = req.params.materialId;
+      const regenerate = req.query.regenerate === 'true';
+      
+      // Get the study material
+      const material = await storage.getStudyMaterial(materialId);
+      if (!material) {
+        return res.status(404).json({ message: "Study material not found" });
+      }
+      
+      // Verify ownership
+      if (material.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Set up Server-Sent Events for streaming
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      // Check if we have cached topics and videos (unless regenerating)
+      let topics: string[] = [];
+
+      if (!regenerate) {
+        // Try to get cached topics
+        const cachedTopics = await storage.getMaterialTopics(materialId);
+        if (cachedTopics && cachedTopics.topics) {
+          topics = cachedTopics.topics as string[];
+          console.log(`Using cached topics (${topics.length}) for material ${materialId}`);
+        }
+      } else {
+        // Delete existing cache if regenerating
+        await storage.deleteMaterialTopics(materialId);
+        await storage.deleteYoutubeRecommendationsByMaterial(materialId);
+      }
+
+      // If no cached topics, extract them from PDF
+      if (topics.length === 0) {
+        res.write(`data: ${JSON.stringify({ type: 'status', message: 'Extracting topics from PDF...' })}\n\n`);
+
+        // Get or upload PDF to Gemini File API
+        let geminiFileUri: string | null = material.geminiFileUri || null;
+        let geminiMimeType: string | null = null;
+
+        if (!geminiFileUri) {
+          try {
+            const fileUrl = material.fileUrl;
+            if (fileUrl) {
+              console.log("Uploading PDF to Gemini File API for topic extraction...");
+              
+              const pdfBuffer = await fetch(fileUrl).then((response) => {
+                if (!response.ok) {
+                  throw new Error(`Failed to download PDF: ${response.statusText}`);
+                }
+                return response.arrayBuffer();
+              });
+
+              const fileBlob = new Blob([pdfBuffer], { type: 'application/pdf' });
+              const file = await genAI.files.upload({
+                file: fileBlob,
+                config: {
+                  displayName: material.fileName || material.title,
+                },
+              });
+
+              if (!file.name) {
+                throw new Error("Failed to get file name from Gemini upload response");
+              }
+              
+              let getFile = await genAI.files.get({ name: file.name });
+              while (getFile.state === 'PROCESSING') {
+                getFile = await genAI.files.get({ name: file.name });
+                await new Promise((resolve) => setTimeout(resolve, 5000));
+              }
+
+              if (getFile.state === 'FAILED') {
+                throw new Error('File processing failed.');
+              }
+
+              geminiFileUri = getFile.uri || file.uri || null;
+              geminiMimeType = getFile.mimeType || file.mimeType || 'application/pdf';
+
+              if (!geminiFileUri) {
+                throw new Error("Failed to get file URI from Gemini upload response");
+              }
+
+              await db.update(studyMaterials)
+                .set({ geminiFileUri })
+                .where(eq(studyMaterials.id, material.id));
+            }
+          } catch (uploadError) {
+            console.error("Error uploading PDF to Gemini:", uploadError);
+            res.write(`data: ${JSON.stringify({ type: 'error', message: 'Failed to process PDF' })}\n\n`);
+            res.end();
+            return;
+          }
+        } else {
+          geminiMimeType = 'application/pdf';
+        }
+
+        // Extract topics using Gemini
+        const topicExtractionPrompt = `Analyze the attached PDF document and extract all the main topics, concepts, and subjects covered in it. 
+      
+Return ONLY a JSON array of topic strings, where each topic is a clear, concise description of a main subject or concept from the document.
+Focus on educational topics that would benefit from video lectures.
+Return the topics as a simple JSON array like: ["Topic 1", "Topic 2", "Topic 3"]
+Do not include any additional text, explanations, or markdown formatting - just the JSON array.`;
+
+        const contents: any[] = [topicExtractionPrompt];
+        
+        if (geminiFileUri && geminiMimeType) {
+          const fileContent = createPartFromUri(geminiFileUri, geminiMimeType);
+          contents.push(fileContent);
+        }
+
+        const topicResult = await genAI.models.generateContent({
+          model: "gemini-2.0-flash",
+          contents: contents,
+        });
+
+        const topicText = topicResult.text || "";
+        const jsonMatch = topicText.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) {
+          throw new Error("Failed to extract topics from PDF");
+        }
+
+        try {
+          topics = JSON.parse(jsonMatch[0]);
+          if (!Array.isArray(topics) || topics.length === 0) {
+            throw new Error("No topics found in PDF");
+          }
+        } catch (parseError) {
+          throw new Error("Failed to parse topics from AI response");
+        }
+
+        // Store topics in DB
+        await storage.createOrUpdateMaterialTopics({
+          materialId,
+          topics: topics as any,
+        });
+
+        res.write(`data: ${JSON.stringify({ type: 'status', message: `Found ${topics.length} topics. Searching for videos...` })}\n\n`);
+      }
+
+      // Get YouTube API key
+      const youtubeApiKey = process.env.YOUTUBE_API_KEY;
+      if (!youtubeApiKey) {
+        throw new Error("YouTube API key not configured");
+      }
+
+      // Helper function to parse duration
+      const parseDuration = (duration: string): number => {
+        const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+        if (match) {
+          const hours = parseInt(match[1] || '0', 10);
+          const minutes = parseInt(match[2] || '0', 10);
+          const seconds = parseInt(match[3] || '0', 10);
+          return hours * 3600 + minutes * 60 + seconds;
+        }
+        return 0;
+      };
+
+      // Helper function to make YouTube API request with retry and error handling
+      const youtubeApiRequest = async (url: string, retries = 2): Promise<any> => {
+        for (let i = 0; i <= retries; i++) {
+          try {
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (!response.ok) {
+              // Check for quota/rate limit errors
+              if (response.status === 403 || response.status === 429) {
+                const errorMessage = data.error?.message || response.statusText;
+                if (errorMessage.includes('quota') || errorMessage.includes('rateLimitExceeded')) {
+                  throw new Error(`YouTube API quota exceeded: ${errorMessage}`);
+                }
+                throw new Error(`YouTube API error (${response.status}): ${errorMessage}`);
+              }
+              
+              if (response.status === 400) {
+                const errorMessage = data.error?.message || response.statusText;
+                // Skip this request, don't retry for bad requests
+                console.warn(`YouTube API bad request: ${errorMessage}`);
+                return null;
+              }
+              
+              throw new Error(`YouTube API error (${response.status}): ${response.statusText}`);
+            }
+            
+            return data;
+          } catch (error: any) {
+            if (i === retries) {
+              throw error;
+            }
+            // Exponential backoff: wait 1s, 2s, 4s
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+          }
+        }
+        return null;
+      };
+
+      // Step 1: Check cache and collect topics that need searching
+      const topicsToSearch: string[] = [];
+      const cachedRecsMap: Map<string, any> = new Map();
+
+      for (const topic of topics) {
+        if (!regenerate) {
+          const existing = await storage.getYoutubeRecommendationByTopic(materialId, topic);
+          if (existing) {
+            const cachedRec = {
+              topic: existing.topic,
+              videoId: existing.videoId,
+              title: existing.title,
+              channelTitle: existing.channelTitle,
+              thumbnail: existing.thumbnail,
+              description: existing.description || "",
+            };
+            cachedRecsMap.set(topic, cachedRec);
+            // Send cached recommendation immediately
+            res.write(`data: ${JSON.stringify({ type: 'video', recommendation: cachedRec })}\n\n`);
+            continue;
+          }
+        }
+        topicsToSearch.push(topic);
+      }
+
+      // If all topics are cached, we're done
+      if (topicsToSearch.length === 0) {
+        res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);
+        res.end();
+        return;
+      }
+
+      res.write(`data: ${JSON.stringify({ type: 'status', message: `Searching for ${topicsToSearch.length} topics...` })}\n\n`);
+
+      // Step 2: Perform searches (1 API call per topic) - collect all video IDs
+      const searchResults: Array<{ topic: string; items: any[] }> = [];
+      
+      for (let i = 0; i < topicsToSearch.length; i++) {
+        const topic = topicsToSearch[i];
+        try {
+          // Add delay between requests to avoid rate limiting (100ms delay)
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+
+          const searchQuery = encodeURIComponent(`${topic} lecture tutorial`);
+          // Use relevance order and limit to 5 results to reduce processing
+          const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${searchQuery}&type=video&videoCategoryId=27&maxResults=5&order=relevance&key=${youtubeApiKey}`;
+          
+          const searchData = await youtubeApiRequest(searchUrl);
+          
+          if (searchData && searchData.items && searchData.items.length > 0) {
+            searchResults.push({ topic, items: searchData.items });
+          }
+        } catch (error: any) {
+          console.error(`Error searching YouTube for topic "${topic}":`, error.message);
+          // Continue with other topics
+        }
+      }
+
+      if (searchResults.length === 0) {
+        res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);
+        res.end();
+        return;
+      }
+
+      // Step 3: Batch all video details requests (ONE API call for all videos)
+      const allVideoIds: string[] = [];
+      const videoIdToTopic: Map<string, string> = new Map();
+      const videoIdToSnippet: Map<string, any> = new Map();
+
+      for (const { topic, items } of searchResults) {
+        for (const item of items) {
+          const videoId = item.id.videoId;
+          if (videoId && !allVideoIds.includes(videoId)) {
+            allVideoIds.push(videoId);
+            videoIdToTopic.set(videoId, topic);
+            videoIdToSnippet.set(videoId, item.snippet);
+          }
+        }
+      }
+
+      if (allVideoIds.length === 0) {
+        res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);
+        res.end();
+        return;
+      }
+
+      // YouTube API allows up to 50 video IDs per request - batch them
+      const batchSize = 50;
+      const allVideoDetails: Map<string, any> = new Map();
+
+      for (let i = 0; i < allVideoIds.length; i += batchSize) {
+        const batch = allVideoIds.slice(i, i + batchSize);
+        const videoIdsString = batch.join(',');
+        const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIdsString}&key=${youtubeApiKey}`;
+        
+        try {
+          const detailsData = await youtubeApiRequest(detailsUrl);
+          if (detailsData && detailsData.items) {
+            for (const video of detailsData.items) {
+              allVideoDetails.set(video.id, video);
+            }
+          }
+        } catch (error: any) {
+          console.error(`Error fetching video details batch:`, error.message);
+        }
+      }
+
+      // Step 4: Process results and send recommendations (lazy loading)
+      const topicToVideo: Map<string, any> = new Map();
+
+      for (const { topic, items } of searchResults) {
+        // Find first long-form video for this topic
+        for (const item of items) {
+          const videoId = item.id.videoId;
+          const videoDetails = allVideoDetails.get(videoId);
+          
+          if (videoDetails) {
+            const duration = videoDetails.contentDetails?.duration;
+            if (duration) {
+              const totalSeconds = parseDuration(duration);
+              
+              // Only select videos longer than 60 seconds (filter out shorts)
+              if (totalSeconds > 60) {
+                const snippet = videoIdToSnippet.get(videoId);
+                const viewCount = parseInt(videoDetails.statistics?.viewCount || '0', 10);
+                
+                // Store best video for this topic (by view count)
+                const existing = topicToVideo.get(topic);
+                if (!existing || viewCount > existing.viewCount) {
+                  topicToVideo.set(topic, {
+                    topic,
+                    videoId,
+                    snippet,
+                    viewCount,
+                    duration: totalSeconds,
+                    videoDetails,
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Step 5: Send recommendations and store in DB
+      const topicEntries = Array.from(topicToVideo.entries());
+      for (const [topic, videoData] of topicEntries) {
+        try {
+          const recommendation = {
+            topic: videoData.topic,
+            videoId: videoData.videoId,
+            title: videoData.snippet.title,
+            channelTitle: videoData.snippet.channelTitle,
+            thumbnail: videoData.snippet.thumbnails?.high?.url || videoData.snippet.thumbnails?.default?.url || "",
+            description: videoData.snippet.description || "",
+          };
+
+          // Store in DB
+          await storage.createYoutubeRecommendation({
+            materialId,
+            topic: videoData.topic,
+            videoId: videoData.videoId,
+            title: videoData.snippet.title,
+            channelTitle: videoData.snippet.channelTitle,
+            thumbnail: recommendation.thumbnail,
+            description: videoData.snippet.description || "",
+            viewCount: videoData.viewCount,
+            duration: videoData.duration,
+          });
+
+          // Send immediately (lazy loading)
+          res.write(`data: ${JSON.stringify({ type: 'video', recommendation })}\n\n`);
+        } catch (error) {
+          console.error(`Error storing recommendation for topic "${topic}":`, error);
+        }
+      }
+
+      res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);
+      res.end();
+    } catch (error: any) {
+      console.error("Error generating YouTube recommendations:", error);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: error.message || "Failed to generate YouTube recommendations" })}\n\n`);
+      res.end();
+    }
+  });
+
   app.post("/api/study-materials/upload", isAuthenticated, upload.single("file"), async (req: any, res) => {
     try {
       const userId = req.user.id;

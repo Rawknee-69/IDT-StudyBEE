@@ -26,6 +26,7 @@ import {
   User,
   LogOut,
   Home,
+  FolderOpen,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/clerkAuth";
@@ -35,6 +36,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 const studyItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Study Materials", url: "/materials", icon: BookOpen },
+  { title: "Resources", url: "/resources", icon: FolderOpen },
   { title: "AI Chat", url: "/chat", icon: Brain },
   { title: "Flashcards", url: "/flashcards", icon: FileText },
   { title: "Quizzes", url: "/quizzes", icon: Target },

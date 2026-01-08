@@ -17,6 +17,7 @@ const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Profile = lazy(() => import("@/pages/profile"));
 const Materials = lazy(() => import("@/pages/materials"));
 const MaterialDetail = lazy(() => import("@/pages/material-detail"));
+const Resources = lazy(() => import("@/pages/resources"));
 const Chat = lazy(() => import("@/pages/chat"));
 const Flashcards = lazy(() => import("@/pages/flashcards"));
 const Quizzes = lazy(() => import("@/pages/quizzes"));
@@ -56,6 +57,7 @@ function Router() {
         <Route path="/profile" component={Profile} />
         <Route path="/materials/:id" component={MaterialDetail} />
         <Route path="/materials" component={Materials} />
+        <Route path="/resources" component={Resources} />
         <Route path="/chat" component={Chat} />
         <Route path="/flashcards" component={Flashcards} />
         <Route path="/quizzes" component={Quizzes} />

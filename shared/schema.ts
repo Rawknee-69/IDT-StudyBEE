@@ -412,3 +412,47 @@ export type CollabPresentation = typeof collabPresentations.$inferSelect;
 
 export type InsertCollabPresentationEditor = z.infer<typeof insertCollabPresentationEditorSchema>;
 export type CollabPresentationEditor = typeof collabPresentationEditors.$inferSelect;
+
+// Extracted topics from study materials (for YouTube recommendations)
+export const materialTopics = pgTable("material_topics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  materialId: varchar("material_id").notNull().references(() => studyMaterials.id, { onDelete: "cascade" }),
+  topics: jsonb("topics").notNull(), // Array of topic strings
+  extractedAt: timestamp("extracted_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_material_topics_material").on(table.materialId),
+]);
+
+// YouTube video recommendations for topics
+export const youtubeRecommendations = pgTable("youtube_recommendations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  materialId: varchar("material_id").notNull().references(() => studyMaterials.id, { onDelete: "cascade" }),
+  topic: text("topic").notNull(),
+  videoId: varchar("video_id").notNull(),
+  title: text("title").notNull(),
+  channelTitle: text("channel_title").notNull(),
+  thumbnail: text("thumbnail").notNull(),
+  description: text("description"),
+  viewCount: integer("view_count"),
+  duration: integer("duration"), // in seconds
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_youtube_recommendations_material").on(table.materialId),
+  index("idx_youtube_recommendations_material_topic").on(table.materialId, table.topic),
+]);
+
+export const insertMaterialTopicsSchema = createInsertSchema(materialTopics).omit({
+  id: true,
+  extractedAt: true,
+});
+
+export const insertYoutubeRecommendationSchema = createInsertSchema(youtubeRecommendations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertMaterialTopics = z.infer<typeof insertMaterialTopicsSchema>;
+export type MaterialTopics = typeof materialTopics.$inferSelect;
+
+export type InsertYoutubeRecommendation = z.infer<typeof insertYoutubeRecommendationSchema>;
+export type YoutubeRecommendation = typeof youtubeRecommendations.$inferSelect;
