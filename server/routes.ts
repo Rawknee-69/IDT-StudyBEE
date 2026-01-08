@@ -362,15 +362,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Study material not found" });
       }
 
-      // Use Gemini to generate quiz
-      const prompt = `Generate ${questionCount} multiple choice quiz questions from this study material titled "${material.title}". 
-      Return ONLY a JSON array with objects containing 'question', 'options' (array of 4 choices), and 'correctAnswer' (the correct option text). No additional text or markdown formatting.
-      Use plain text only - no asterisks, underscores, or markdown syntax.
-      Example format: [{"question": "What is X?", "options": ["A", "B", "C", "D"], "correctAnswer": "A"}, ...]`;
+      // Get or upload PDF to Gemini File API (same logic as chat endpoint)
+      let geminiFileUri: string | null = material.geminiFileUri || null;
+      let geminiMimeType: string | null = null;
+      
+      // If we don't have a Gemini file URI, upload the PDF now
+      if (!geminiFileUri) {
+        try {
+          const fileUrl = material.fileUrl;
+          if (fileUrl) {
+            console.log("Uploading PDF to Gemini File API for quiz generation...");
+            
+            // Download PDF from UploadThing
+            const pdfBuffer = await fetch(fileUrl).then((response) => {
+              if (!response.ok) {
+                throw new Error(`Failed to download PDF: ${response.statusText}`);
+              }
+              return response.arrayBuffer();
+            });
 
+            // Create a Blob from the PDF buffer
+            const fileBlob = new Blob([pdfBuffer], { type: 'application/pdf' });
+
+            // Upload to Gemini File API
+            const file = await genAI.files.upload({
+              file: fileBlob,
+              config: {
+                displayName: material.fileName || material.title,
+              },
+            });
+
+            // Wait for the file to be processed
+            if (!file.name) {
+              throw new Error("Failed to get file name from Gemini upload response");
+            }
+            
+            let getFile = await genAI.files.get({ name: file.name });
+            while (getFile.state === 'PROCESSING') {
+              getFile = await genAI.files.get({ name: file.name });
+              console.log(`Current file status: ${getFile.state}`);
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+
+            if (getFile.state === 'FAILED') {
+              throw new Error('File processing failed.');
+            }
+
+            geminiFileUri = getFile.uri || file.uri || null;
+            geminiMimeType = getFile.mimeType || file.mimeType || 'application/pdf';
+
+            if (!geminiFileUri) {
+              throw new Error("Failed to get file URI from Gemini upload response");
+            }
+
+            // Store the Gemini file URI in the database
+            await db.update(studyMaterials)
+              .set({ geminiFileUri })
+              .where(eq(studyMaterials.id, material.id));
+            console.log("PDF uploaded to Gemini successfully for quiz generation, file URI:", geminiFileUri);
+          }
+        } catch (uploadError) {
+          console.error("Error uploading PDF to Gemini for quiz generation:", uploadError);
+          return res.status(500).json({ 
+            message: "Failed to process PDF. Please ensure the PDF file is accessible." 
+          });
+        }
+      } else {
+        geminiMimeType = 'application/pdf';
+        console.log("Using existing Gemini file URI for quiz generation:", geminiFileUri);
+        
+        // Verify the file is still accessible and ready
+        try {
+          if (geminiFileUri) {
+            // Extract file name from URI (format: files/xxx)
+            const fileNameMatch = geminiFileUri.match(/files\/([^\/]+)/);
+            if (fileNameMatch) {
+              const fileName = fileNameMatch[1];
+              const fileStatus = await genAI.files.get({ name: fileName });
+              console.log("File status check:", fileStatus.state);
+              if (fileStatus.state === 'FAILED') {
+                throw new Error('File processing failed. Please re-upload the PDF.');
+              }
+            }
+          }
+        } catch (verifyError) {
+          console.error("Error verifying file status:", verifyError);
+          // Continue anyway - file might still be accessible
+        }
+      }
+
+      // Build prompt with explicit PDF file reference
+      const prompt = `You are analyzing the attached PDF document. Based ONLY on the content of this PDF, generate ${questionCount} multiple choice quiz questions that test understanding of the key concepts, facts, and information presented in the document.
+
+IMPORTANT: 
+- All questions MUST be based on the actual content in the attached PDF
+- Do NOT generate random or generic questions
+- Focus on specific details, facts, and concepts from the document
+- Return ONLY a JSON array with objects containing 'question', 'options' (array of 4 choices), and 'correctAnswer' (the correct option text)
+- No additional text or markdown formatting
+- Use plain text only - no asterisks, underscores, or markdown syntax
+
+Example format: [{"question": "What is X?", "options": ["A", "B", "C", "D"], "correctAnswer": "A"}, ...]`;
+
+      // Prepare contents array - simple format matching chat endpoint exactly
+      const contents: any[] = [];
+      
+      // Add prompt first
+      contents.push(prompt);
+      
+      // Add PDF file reference using createPartFromUri (same as chat endpoint)
+      if (geminiFileUri && geminiMimeType) {
+        console.log("Adding PDF file to quiz generation request, URI:", geminiFileUri);
+        const fileContent = createPartFromUri(geminiFileUri, geminiMimeType);
+        contents.push(fileContent);
+        console.log("Quiz generation contents array: prompt + file (2 items)");
+      } else {
+        console.error("WARNING: No Gemini file URI available for quiz generation!");
+        console.log("Quiz generation contents array: prompt only (1 item)");
+      }
+
+      // Use Gemini to generate quiz with PDF content
       const result = await genAI.models.generateContent({
         model: "gemini-2.0-flash",
-        contents: prompt,
+        contents: contents,
       });
       const text = result.text || "";
       
