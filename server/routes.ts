@@ -264,13 +264,7 @@ Do not include any additional text, explanations, or markdown formatting - just 
         res.write(`data: ${JSON.stringify({ type: 'status', message: `Found ${topics.length} topics. Searching for videos...` })}\n\n`);
       }
 
-      // Get YouTube API key
-      const youtubeApiKey = process.env.YOUTUBE_API_KEY;
-      if (!youtubeApiKey) {
-        throw new Error("YouTube API key not configured");
-      }
-
-      // Helper function to parse duration
+      // Helper function to parse duration (ISO 8601 format: PT1H2M10S)
       const parseDuration = (duration: string): number => {
         const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
         if (match) {
@@ -282,43 +276,179 @@ Do not include any additional text, explanations, or markdown formatting - just 
         return 0;
       };
 
-      // Helper function to make YouTube API request with retry and error handling
-      const youtubeApiRequest = async (url: string, retries = 2): Promise<any> => {
+      // Helper function to search YouTube without API (web scraping)
+      const searchYouTube = async (query: string, retries = 2): Promise<any[]> => {
         for (let i = 0; i <= retries; i++) {
           try {
-            const response = await fetch(url);
-            const data = await response.json();
+            // Construct YouTube search URL
+            const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
             
+            // Fetch the search page with proper headers to avoid bot detection
+            const response = await fetch(searchUrl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+              },
+            });
+
             if (!response.ok) {
-              // Check for quota/rate limit errors
-              if (response.status === 403 || response.status === 429) {
-                const errorMessage = data.error?.message || response.statusText;
-                if (errorMessage.includes('quota') || errorMessage.includes('rateLimitExceeded')) {
-                  throw new Error(`YouTube API quota exceeded: ${errorMessage}`);
-                }
-                throw new Error(`YouTube API error (${response.status}): ${errorMessage}`);
-              }
-              
-              if (response.status === 400) {
-                const errorMessage = data.error?.message || response.statusText;
-                // Skip this request, don't retry for bad requests
-                console.warn(`YouTube API bad request: ${errorMessage}`);
-                return null;
-              }
-              
-              throw new Error(`YouTube API error (${response.status}): ${response.statusText}`);
+              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
+
+            const html = await response.text();
             
-            return data;
+            // Extract ytInitialData from the HTML
+            // YouTube embeds video data in a script tag: var ytInitialData = {...}
+            const ytInitialDataMatch = html.match(/var ytInitialData = ({.+?});/s);
+            if (!ytInitialDataMatch) {
+              // Try alternative pattern
+              const altMatch = html.match(/window\["ytInitialData"\] = ({.+?});/s);
+              if (!altMatch) {
+                throw new Error('Could not find ytInitialData in YouTube page');
+              }
+              const data = JSON.parse(altMatch[1]);
+              return extractVideosFromData(data);
+            }
+
+            const data = JSON.parse(ytInitialDataMatch[1]);
+            return extractVideosFromData(data);
           } catch (error: any) {
             if (i === retries) {
-              throw error;
+              console.error(`Error searching YouTube for "${query}":`, error.message);
+              return [];
             }
-            // Exponential backoff: wait 1s, 2s, 4s
+            // Exponential backoff: wait 1s, 2s
             await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
           }
         }
-        return null;
+        return [];
+      };
+
+      // Helper function to extract video information from YouTube's embedded data
+      const extractVideosFromData = (data: any): any[] => {
+        const videos: any[] = [];
+        
+        try {
+          // Try multiple possible data structures (YouTube changes their structure)
+          let contents: any[] = [];
+          
+          // Method 1: Standard structure
+          if (data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents) {
+            contents = data.contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer.contents;
+          }
+          // Method 2: Alternative structure
+          else if (data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.richGridRenderer?.contents) {
+            contents = data.contents.twoColumnSearchResultsRenderer.primaryContents.richGridRenderer.contents;
+          }
+          // Method 3: Direct contents
+          else if (Array.isArray(data?.contents)) {
+            contents = data.contents;
+          }
+          
+          // Recursively search for videoRenderer in the data structure
+          const findVideoRenderers = (obj: any, depth = 0): any[] => {
+            if (depth > 10) return []; // Prevent infinite recursion
+            
+            const renderers: any[] = [];
+            
+            if (obj && typeof obj === 'object') {
+              if (obj.videoRenderer) {
+                renderers.push(obj.videoRenderer);
+              }
+              
+              if (Array.isArray(obj)) {
+                for (const item of obj) {
+                  renderers.push(...findVideoRenderers(item, depth + 1));
+                }
+              } else {
+                for (const key in obj) {
+                  if (key === 'videoRenderer') {
+                    renderers.push(obj[key]);
+                  } else {
+                    renderers.push(...findVideoRenderers(obj[key], depth + 1));
+                  }
+                }
+              }
+            }
+            
+            return renderers;
+          };
+          
+          const videoRenderers = findVideoRenderers(contents);
+          
+          for (const videoRenderer of videoRenderers) {
+            if (!videoRenderer || !videoRenderer.videoId) continue;
+            
+            const videoId = videoRenderer.videoId;
+            const title = videoRenderer.title?.runs?.[0]?.text || videoRenderer.title?.simpleText || '';
+            const channelTitle = videoRenderer.ownerText?.runs?.[0]?.text || videoRenderer.channelName?.simpleText || '';
+            
+            // Get thumbnail (prefer high quality)
+            let thumbnail = '';
+            if (videoRenderer.thumbnail?.thumbnails?.length > 0) {
+              thumbnail = videoRenderer.thumbnail.thumbnails[videoRenderer.thumbnail.thumbnails.length - 1]?.url || '';
+            }
+            
+            // Parse duration from lengthText (e.g., "10:30" or "1:23:45")
+            const lengthText = videoRenderer.lengthText?.simpleText || '';
+            let durationSeconds = 0;
+            if (lengthText) {
+              const parts = lengthText.split(':').map(Number).filter((n: number) => !isNaN(n));
+              if (parts.length === 2) {
+                durationSeconds = parts[0] * 60 + parts[1];
+              } else if (parts.length === 3) {
+                durationSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+              }
+            }
+
+            // Get view count if available
+            const viewCountText = videoRenderer.viewCountText?.simpleText || 
+                                 videoRenderer.viewCountText?.runs?.[0]?.text || 
+                                 videoRenderer.shortViewCountText?.simpleText || 
+                                 '0';
+            const viewCount = parseViewCount(viewCountText);
+
+            // Get description
+            const description = videoRenderer.descriptionSnippet?.runs?.map((r: any) => r.text).join('') || 
+                               videoRenderer.descriptionSnippet?.simpleText || 
+                               '';
+
+            if (videoId && title) {
+              videos.push({
+                videoId,
+                title,
+                channelTitle,
+                thumbnail,
+                duration: durationSeconds,
+                viewCount,
+                description,
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error extracting videos from YouTube data:', error);
+        }
+        
+        return videos;
+      };
+
+      // Helper function to parse view count (e.g., "1.2M views" -> 1200000)
+      const parseViewCount = (text: string): number => {
+        const clean = text.replace(/[^0-9.,KMkm]/g, '');
+        if (!clean) return 0;
+        
+        const num = parseFloat(clean.replace(/,/g, ''));
+        if (text.toLowerCase().includes('k')) {
+          return Math.floor(num * 1000);
+        } else if (text.toLowerCase().includes('m')) {
+          return Math.floor(num * 1000000);
+        } else if (text.toLowerCase().includes('b')) {
+          return Math.floor(num * 1000000000);
+        }
+        return Math.floor(num);
       };
 
       // Step 1: Check cache and collect topics that need searching
@@ -355,148 +485,69 @@ Do not include any additional text, explanations, or markdown formatting - just 
 
       res.write(`data: ${JSON.stringify({ type: 'status', message: `Searching for ${topicsToSearch.length} topics...` })}\n\n`);
 
-      // Step 2: Perform searches (1 API call per topic) - collect all video IDs
-      const searchResults: Array<{ topic: string; items: any[] }> = [];
+      // Step 2: Perform searches using web scraping (no API calls!)
+      const topicToVideo: Map<string, any> = new Map();
       
       for (let i = 0; i < topicsToSearch.length; i++) {
         const topic = topicsToSearch[i];
         try {
-          // Add delay between requests to avoid rate limiting (100ms delay)
+          // Add delay between requests to be respectful (500ms delay)
           if (i > 0) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
 
-          const searchQuery = encodeURIComponent(`${topic} lecture tutorial`);
-          // Use relevance order and limit to 5 results to reduce processing
-          const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${searchQuery}&type=video&videoCategoryId=27&maxResults=5&order=relevance&key=${youtubeApiKey}`;
+          // Search query optimized for educational content
+          const searchQuery = `${topic} lecture tutorial educational`;
           
-          const searchData = await youtubeApiRequest(searchUrl);
+          res.write(`data: ${JSON.stringify({ type: 'status', message: `Searching for: ${topic}...` })}\n\n`);
           
-          if (searchData && searchData.items && searchData.items.length > 0) {
-            searchResults.push({ topic, items: searchData.items });
+          const videos = await searchYouTube(searchQuery);
+          
+          if (videos && videos.length > 0) {
+            // Filter for long-form videos (>60 seconds) and find the best one
+            let bestVideo: any = null;
+            for (const video of videos) {
+              // Only select videos longer than 60 seconds (filter out shorts)
+              if (video.duration > 60) {
+                // Choose video with highest view count
+                if (!bestVideo || video.viewCount > bestVideo.viewCount) {
+                  bestVideo = video;
+                }
+              }
+            }
+
+            if (bestVideo) {
+              topicToVideo.set(topic, bestVideo);
+              
+              // Send immediately (lazy loading)
+              const recommendation = {
+                topic: topic,
+                videoId: bestVideo.videoId,
+                title: bestVideo.title,
+                channelTitle: bestVideo.channelTitle,
+                thumbnail: bestVideo.thumbnail,
+                description: bestVideo.description || "",
+              };
+
+              // Store in DB
+              await storage.createYoutubeRecommendation({
+                materialId,
+                topic: topic,
+                videoId: bestVideo.videoId,
+                title: bestVideo.title,
+                channelTitle: bestVideo.channelTitle,
+                thumbnail: bestVideo.thumbnail,
+                description: bestVideo.description || "",
+                viewCount: bestVideo.viewCount,
+                duration: bestVideo.duration,
+              });
+
+              res.write(`data: ${JSON.stringify({ type: 'video', recommendation })}\n\n`);
+            }
           }
         } catch (error: any) {
           console.error(`Error searching YouTube for topic "${topic}":`, error.message);
           // Continue with other topics
-        }
-      }
-
-      if (searchResults.length === 0) {
-        res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);
-        res.end();
-        return;
-      }
-
-      // Step 3: Batch all video details requests (ONE API call for all videos)
-      const allVideoIds: string[] = [];
-      const videoIdToTopic: Map<string, string> = new Map();
-      const videoIdToSnippet: Map<string, any> = new Map();
-
-      for (const { topic, items } of searchResults) {
-        for (const item of items) {
-          const videoId = item.id.videoId;
-          if (videoId && !allVideoIds.includes(videoId)) {
-            allVideoIds.push(videoId);
-            videoIdToTopic.set(videoId, topic);
-            videoIdToSnippet.set(videoId, item.snippet);
-          }
-        }
-      }
-
-      if (allVideoIds.length === 0) {
-        res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);
-        res.end();
-        return;
-      }
-
-      // YouTube API allows up to 50 video IDs per request - batch them
-      const batchSize = 50;
-      const allVideoDetails: Map<string, any> = new Map();
-
-      for (let i = 0; i < allVideoIds.length; i += batchSize) {
-        const batch = allVideoIds.slice(i, i + batchSize);
-        const videoIdsString = batch.join(',');
-        const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIdsString}&key=${youtubeApiKey}`;
-        
-        try {
-          const detailsData = await youtubeApiRequest(detailsUrl);
-          if (detailsData && detailsData.items) {
-            for (const video of detailsData.items) {
-              allVideoDetails.set(video.id, video);
-            }
-          }
-        } catch (error: any) {
-          console.error(`Error fetching video details batch:`, error.message);
-        }
-      }
-
-      // Step 4: Process results and send recommendations (lazy loading)
-      const topicToVideo: Map<string, any> = new Map();
-
-      for (const { topic, items } of searchResults) {
-        // Find first long-form video for this topic
-        for (const item of items) {
-          const videoId = item.id.videoId;
-          const videoDetails = allVideoDetails.get(videoId);
-          
-          if (videoDetails) {
-            const duration = videoDetails.contentDetails?.duration;
-            if (duration) {
-              const totalSeconds = parseDuration(duration);
-              
-              // Only select videos longer than 60 seconds (filter out shorts)
-              if (totalSeconds > 60) {
-                const snippet = videoIdToSnippet.get(videoId);
-                const viewCount = parseInt(videoDetails.statistics?.viewCount || '0', 10);
-                
-                // Store best video for this topic (by view count)
-                const existing = topicToVideo.get(topic);
-                if (!existing || viewCount > existing.viewCount) {
-                  topicToVideo.set(topic, {
-                    topic,
-                    videoId,
-                    snippet,
-                    viewCount,
-                    duration: totalSeconds,
-                    videoDetails,
-                  });
-                }
-              }
-            }
-          }
-        }
-      }
-
-      // Step 5: Send recommendations and store in DB
-      const topicEntries = Array.from(topicToVideo.entries());
-      for (const [topic, videoData] of topicEntries) {
-        try {
-          const recommendation = {
-            topic: videoData.topic,
-            videoId: videoData.videoId,
-            title: videoData.snippet.title,
-            channelTitle: videoData.snippet.channelTitle,
-            thumbnail: videoData.snippet.thumbnails?.high?.url || videoData.snippet.thumbnails?.default?.url || "",
-            description: videoData.snippet.description || "",
-          };
-
-          // Store in DB
-          await storage.createYoutubeRecommendation({
-            materialId,
-            topic: videoData.topic,
-            videoId: videoData.videoId,
-            title: videoData.snippet.title,
-            channelTitle: videoData.snippet.channelTitle,
-            thumbnail: recommendation.thumbnail,
-            description: videoData.snippet.description || "",
-            viewCount: videoData.viewCount,
-            duration: videoData.duration,
-          });
-
-          // Send immediately (lazy loading)
-          res.write(`data: ${JSON.stringify({ type: 'video', recommendation })}\n\n`);
-        } catch (error) {
-          console.error(`Error storing recommendation for topic "${topic}":`, error);
         }
       }
 
