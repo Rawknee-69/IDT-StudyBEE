@@ -214,6 +214,8 @@ export interface IStorage {
   getYoutubeRecommendationByTopic(materialId: string, topic: string): Promise<YoutubeRecommendation | undefined>;
   createYoutubeRecommendation(recommendation: InsertYoutubeRecommendation): Promise<YoutubeRecommendation>;
   deleteYoutubeRecommendationsByMaterial(materialId: string): Promise<void>;
+
+  getTodayStudyTime(userId: string): Promise<number>;
 }
 
 export class DbStorage implements IStorage {
@@ -882,6 +884,52 @@ export class DbStorage implements IStorage {
 
   async deleteYoutubeRecommendationsByMaterial(materialId: string): Promise<void> {
     await db.delete(youtubeRecommendations).where(eq(youtubeRecommendations.materialId, materialId));
+  }
+
+  async getTodayStudyTime(userId: string): Promise<number> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const sessions = await db
+      .select()
+      .from(studySessions)
+      .where(sql`${studySessions.userId} = ${userId} AND ${studySessions.startTime} >= ${today}`);
+
+    let totalMinutes = 0;
+    for (const session of sessions) {
+      const timeWasted = session.timeWasted || 0;
+      const tabSwitches = session.tabSwitches || 0;
+      
+      const effective = Math.max(0, session.duration - timeWasted - tabSwitches);
+      totalMinutes += effective;
+    }
+    
+    
+    const pomodoros = await db
+      .select()
+      .from(pomodoroSessions)
+      .where(sql`${pomodoroSessions.userId} = ${userId} AND ${pomodoroSessions.createdAt} >= ${today}`);
+      
+    for (const session of pomodoros) {
+      totalMinutes += (session.workDuration * session.completedCycles);
+    }
+
+    
+    const collabs = await db
+      .select()
+      .from(collabParticipants)
+      .where(sql`${collabParticipants.userId} = ${userId} AND ${collabParticipants.joinedAt} >= ${today} AND ${collabParticipants.leftAt} IS NOT NULL`);
+      
+    for (const p of collabs) {
+      if (p.leftAt && p.joinedAt) {
+        const duration = Math.floor((p.leftAt.getTime() - p.joinedAt.getTime()) / (1000 * 60));
+        const breakTime = Math.floor((p.breakDuration || 0) / 60);
+        const effective = Math.max(0, duration - breakTime - (p.tabSwitches || 0));
+        totalMinutes += effective;
+      }
+    }
+
+    return totalMinutes;
   }
 }
 

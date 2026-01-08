@@ -328,7 +328,18 @@ async function handleLeave(ws: WebSocket, msg: WSMessage, userId: string) {
           let currentStreak = user.currentStreak;
           let shouldUpdateStreak = false;
           
-          if (effectiveStudyTime >= 1) {
+          
+          const todayTotalTime = await storage.getTodayStudyTime(userId);
+
+          
+          
+          
+          
+          
+          
+          
+          
+          if (todayTotalTime + effectiveStudyTime >= 1) {
             shouldUpdateStreak = true;
             if (!lastStudy) {
               currentStreak = 1;

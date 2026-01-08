@@ -10,21 +10,15 @@ import { generateAudioFromText } from "./deepgram";
 import { sanitizeMarkdown, sanitizeUserInput, sanitizeForAudio, sanitizeMindMapNode } from "./textUtils";
 import { setupCollabWebSocket, notifySessionEnded } from "./collabWebSocket";
 import {
-  insertStudyMaterialSchema,
+ 
   insertFlashcardSchema,
-  insertQuizSchema,
   insertQuizAttemptSchema,
-  insertMindMapSchema,
-  insertSummarySchema,
   insertStudySessionSchema,
   insertTodoSchema,
   insertPomodoroSessionSchema,
-  insertChatMessageSchema,
   updateUserProfileSchema,
   insertCollabSessionSchema,
   insertCollabParticipantSchema,
-  insertCollabWhiteboardSchema,
-  insertCollabActivitySchema,
   chatMessages,
   studyMaterials,
   type ChatMessage,
@@ -1748,7 +1742,11 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
           let shouldUpdateStreak = false;
 
           
-          if (effectiveStudyTime >= 1) {
+          
+          const todayTotalTime = await storage.getTodayStudyTime(req.user.id);
+
+          
+          if (todayTotalTime >= 1) {
             shouldUpdateStreak = true;
             if (!lastStudy) {
               
@@ -1886,7 +1884,11 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
           let shouldUpdateStreak = false;
 
           
-          if (workTimeMinutes >= 1) {
+          
+          const todayTotalTime = await storage.getTodayStudyTime(userId);
+
+          
+          if (todayTotalTime >= 1) {
             shouldUpdateStreak = true;
             if (!lastStudy) {
               currentStreak = 1;
@@ -2107,7 +2109,10 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
                 let currentStreak = user.currentStreak;
                 let shouldUpdateStreak = false;
 
-                if (effectiveStudyTime >= 1) {
+                
+                const todayTotalTime = await storage.getTodayStudyTime(participant.userId);
+
+                if (todayTotalTime + effectiveStudyTime >= 1) {
                   shouldUpdateStreak = true;
                   if (!lastStudy) {
                     currentStreak = 1;
