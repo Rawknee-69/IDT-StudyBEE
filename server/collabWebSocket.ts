@@ -297,6 +297,61 @@ async function handleLeave(ws: WebSocket, msg: WSMessage, userId: string) {
   
   // Verify participant authorization (allow leave even if not found)
   const participant = await storage.getCollabParticipantByUserAndSession(userId, sessionId);
+  const session = participant ? await storage.getCollabSession(sessionId) : null;
+  
+  // Update study time if concentration mode was on
+  if (participant && session && session.concentrationMode) {
+    try {
+      // Calculate time spent in session (in minutes)
+      const joinTime = participant.joinedAt ? new Date(participant.joinedAt).getTime() : Date.now();
+      const leaveTime = Date.now();
+      const totalMinutes = Math.floor((leaveTime - joinTime) / (1000 * 60));
+      
+      // Calculate effective study time:
+      // - Subtract break time
+      // - Penalize tab switches (1 minute per switch)
+      const breakTimeMinutes = Math.floor(participant.breakDuration / 60);
+      const tabSwitchPenalty = participant.tabSwitches * 1; // 1 minute per tab switch
+      const effectiveStudyTime = Math.max(0, totalMinutes - breakTimeMinutes - tabSwitchPenalty);
+      
+      if (effectiveStudyTime > 0) {
+        const user = await storage.getUser(userId);
+        if (user) {
+          const totalStudyTime = user.totalStudyTime + effectiveStudyTime;
+          
+          // Update streak logic
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const lastStudy = user.lastStudyDate ? new Date(user.lastStudyDate) : null;
+          lastStudy?.setHours(0, 0, 0, 0);
+          
+          let currentStreak = user.currentStreak;
+          // Min 30 min focused study with no tab switches for streak
+          if (effectiveStudyTime >= 30 && participant.tabSwitches === 0) {
+            if (!lastStudy || lastStudy.getTime() === today.getTime()) {
+              // Same day, no change
+            } else if (lastStudy && (today.getTime() - lastStudy.getTime() === 86400000)) {
+              // Consecutive day
+              currentStreak++;
+            } else {
+              // Streak broken
+              currentStreak = 1;
+            }
+          }
+
+          await storage.updateUserStats(userId, {
+            totalStudyTime,
+            currentStreak,
+            longestStreak: Math.max(currentStreak, user.longestStreak),
+            lastStudyDate: today,
+          });
+        }
+      }
+    } catch (error) {
+      console.error(`Error updating study time for user ${userId} leaving collab session:`, error);
+    }
+  }
+  
   if (participant) {
     await storage.removeCollabParticipant(participant.id);
   }

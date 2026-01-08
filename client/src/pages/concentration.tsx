@@ -184,6 +184,7 @@ export default function Concentration() {
   const endSessionMutation = useMutation({
     mutationFn: async (sessionId: string) => {
       return await apiRequest("PATCH", `/api/study-sessions/${sessionId}`, {
+        endTime: new Date().toISOString(),
         duration: Math.floor(elapsedTime / 60),
         tabSwitches,
         timeWasted: Math.floor(timeWasted / 60),

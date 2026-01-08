@@ -1696,10 +1696,22 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       const updatedSession = await storage.updateStudySession(req.params.id, updates);
 
       // Update user stats if session ended
-      if (updates.endTime && updates.duration) {
+      if (updates.endTime && updates.duration !== undefined) {
         const user = await storage.getUser(req.user.id);
         if (user) {
-          const totalStudyTime = user.totalStudyTime + updates.duration;
+          // Calculate effective study time:
+          // - Start with total duration
+          // - Subtract time wasted (tab switches, distractions)
+          // - Penalize tab switches (1 minute per switch)
+          const timeWasted = updates.timeWasted || 0; // in minutes
+          const tabSwitches = updates.tabSwitches || 0;
+          const tabSwitchPenalty = tabSwitches * 1; // 1 minute penalty per tab switch
+          
+          // Effective study time = duration - time wasted - tab switch penalties
+          // But ensure it doesn't go negative
+          const effectiveStudyTime = Math.max(0, updates.duration - timeWasted - tabSwitchPenalty);
+          
+          const totalStudyTime = user.totalStudyTime + effectiveStudyTime;
           
           // Update streak logic
           const today = new Date();
@@ -1708,7 +1720,8 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
           lastStudy?.setHours(0, 0, 0, 0);
           
           let currentStreak = user.currentStreak;
-          if (updates.duration >= 30 && updates.tabSwitches === 0) { // Min 30 min focused study
+          // Min 30 min focused study with no tab switches for streak
+          if (effectiveStudyTime >= 30 && tabSwitches === 0) {
             if (!lastStudy || lastStudy.getTime() === today.getTime()) {
               // Same day, no change
             } else if (lastStudy && (today.getTime() - lastStudy.getTime() === 86400000)) {
@@ -1805,6 +1818,46 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       const userId = req.user.id;
       const sessionData = insertPomodoroSessionSchema.parse({ ...req.body, userId });
       const session = await storage.createPomodoroSession(sessionData);
+      
+      // Update study time when pomodoro work cycle completes
+      // Only count work duration, not break time
+      const completedCycles = sessionData.completedCycles || 0;
+      if (completedCycles > 0 && sessionData.workDuration > 0) {
+        const user = await storage.getUser(userId);
+        if (user) {
+          // Calculate total work time: workDuration * completedCycles
+          const workTimeMinutes = sessionData.workDuration * completedCycles;
+          const totalStudyTime = user.totalStudyTime + workTimeMinutes;
+          
+          // Update streak logic
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const lastStudy = user.lastStudyDate ? new Date(user.lastStudyDate) : null;
+          lastStudy?.setHours(0, 0, 0, 0);
+          
+          let currentStreak = user.currentStreak;
+          // Min 30 min focused study for streak
+          if (workTimeMinutes >= 30) {
+            if (!lastStudy || lastStudy.getTime() === today.getTime()) {
+              // Same day, no change
+            } else if (lastStudy && (today.getTime() - lastStudy.getTime() === 86400000)) {
+              // Consecutive day
+              currentStreak++;
+            } else {
+              // Streak broken
+              currentStreak = 1;
+            }
+          }
+
+          await storage.updateUserStats(userId, {
+            totalStudyTime,
+            currentStreak,
+            longestStreak: Math.max(currentStreak, user.longestStreak),
+            lastStudyDate: today,
+          });
+        }
+      }
+      
       res.json(session);
     } catch (error: any) {
       console.error("Error creating pomodoro session:", error);
@@ -1962,6 +2015,64 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       
       if (session.hostUserId !== userId) {
         return res.status(403).json({ message: "Only the host can end the session" });
+      }
+      
+      // Update study time for all participants if concentration mode was on
+      if (session.concentrationMode) {
+        const participants = await storage.getCollabParticipantsBySession(req.params.id);
+        const sessionEndTime = new Date();
+        
+        for (const participant of participants) {
+          try {
+            // Calculate time spent in session (in minutes)
+            const joinTime = participant.joinedAt ? new Date(participant.joinedAt).getTime() : (session.createdAt ? new Date(session.createdAt).getTime() : Date.now());
+            const endTime = sessionEndTime.getTime();
+            const totalMinutes = Math.floor((endTime - joinTime) / (1000 * 60));
+            
+            // Calculate effective study time:
+            // - Subtract break time
+            // - Penalize tab switches (1 minute per switch)
+            const breakTimeMinutes = Math.floor(participant.breakDuration / 60);
+            const tabSwitchPenalty = participant.tabSwitches * 1; // 1 minute per tab switch
+            const effectiveStudyTime = Math.max(0, totalMinutes - breakTimeMinutes - tabSwitchPenalty);
+            
+            if (effectiveStudyTime > 0) {
+              const user = await storage.getUser(participant.userId);
+              if (user) {
+                const totalStudyTime = user.totalStudyTime + effectiveStudyTime;
+                
+                // Update streak logic
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const lastStudy = user.lastStudyDate ? new Date(user.lastStudyDate) : null;
+                lastStudy?.setHours(0, 0, 0, 0);
+                
+                let currentStreak = user.currentStreak;
+                // Min 30 min focused study with no tab switches for streak
+                if (effectiveStudyTime >= 30 && participant.tabSwitches === 0) {
+                  if (!lastStudy || lastStudy.getTime() === today.getTime()) {
+                    // Same day, no change
+                  } else if (lastStudy && (today.getTime() - lastStudy.getTime() === 86400000)) {
+                    // Consecutive day
+                    currentStreak++;
+                  } else {
+                    // Streak broken
+                    currentStreak = 1;
+                  }
+                }
+
+                await storage.updateUserStats(participant.userId, {
+                  totalStudyTime,
+                  currentStreak,
+                  longestStreak: Math.max(currentStreak, user.longestStreak),
+                  lastStudyDate: today,
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Error updating study time for participant ${participant.userId}:`, error);
+          }
+        }
       }
       
       const endedSession = await storage.endCollabSession(req.params.id);
