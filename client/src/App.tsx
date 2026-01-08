@@ -28,6 +28,7 @@ const Todos = lazy(() => import("@/pages/todos"));
 const Pomodoro = lazy(() => import("@/pages/pomodoro"));
 const Concentration = lazy(() => import("@/pages/concentration"));
 const Leaderboard = lazy(() => import("@/pages/leaderboard"));
+const Analytics = lazy(() => import("@/pages/analytics"));
 const Collab = lazy(() => import("@/pages/collab"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
@@ -80,6 +81,7 @@ function Router() {
         <Route path="/pomodoro" component={Pomodoro} />
         <Route path="/concentration" component={Concentration} />
         <Route path="/leaderboard" component={Leaderboard} />
+        <Route path="/analytics" component={Analytics} />
         <Route path="/collab" component={Collab} />
         <Route component={NotFound} />
       </Switch>

@@ -27,6 +27,7 @@ import {
   LogOut,
   Home,
   FolderOpen,
+  BarChart3,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/clerkAuth";
@@ -46,6 +47,7 @@ const studyItems = [
 ];
 
 const gamificationItems = [
+  { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Leaderboards", url: "/leaderboard", icon: Trophy },
 ];
 

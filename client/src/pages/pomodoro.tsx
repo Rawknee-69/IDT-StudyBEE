@@ -132,6 +132,7 @@ export default function Pomodoro() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pomodoro-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] }); // Refresh user stats for analytics
       toast({
         title: "Session Saved",
         description: `Completed ${completedCycles} cycle${completedCycles !== 1 ? 's' : ''}!`,

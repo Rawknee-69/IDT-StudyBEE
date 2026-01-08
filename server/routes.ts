@@ -1175,13 +1175,22 @@ Example format: [{"question": "What is X?", "options": ["A", "B", "C", "D"], "co
 
       // Update user quiz stats if not cancelled
       if (!attemptData.isCancelled) {
-        const user = await storage.getUser(userId);
-        if (user) {
-          await storage.updateUserStats(userId, {
-            totalQuizScore: user.totalQuizScore + attemptData.score,
-            quizzesCompleted: user.quizzesCompleted + 1,
+        // Ensure user exists in database before updating stats
+        let user = await storage.getUser(userId);
+        if (!user) {
+          user = await storage.upsertUser({
+            id: userId,
+            email: req.user.email,
+            firstName: req.user.firstName || undefined,
+            lastName: req.user.lastName || undefined,
+            profileImageUrl: req.user.profileImageUrl || undefined,
           });
         }
+        
+        await storage.updateUserStats(userId, {
+          totalQuizScore: user.totalQuizScore + attemptData.score,
+          quizzesCompleted: user.quizzesCompleted + 1,
+        });
       }
 
       res.json(attempt);
@@ -1692,12 +1701,28 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
         return res.status(404).json({ message: "Study session not found" });
       }
 
-      const updates = req.body;
+      const updates = { ...req.body };
+      
+      // Convert endTime string to Date object if provided (Drizzle expects Date, not string)
+      if (updates.endTime && typeof updates.endTime === 'string') {
+        updates.endTime = new Date(updates.endTime);
+      }
+      
       const updatedSession = await storage.updateStudySession(req.params.id, updates);
 
       // Update user stats if session ended
       if (updates.endTime && updates.duration !== undefined) {
-        const user = await storage.getUser(req.user.id);
+        // Ensure user exists in database before updating stats
+        let user = await storage.getUser(req.user.id);
+        if (!user) {
+          user = await storage.upsertUser({
+            id: req.user.id,
+            email: req.user.email,
+            firstName: req.user.firstName || undefined,
+            lastName: req.user.lastName || undefined,
+            profileImageUrl: req.user.profileImageUrl || undefined,
+          });
+        }
         if (user) {
           // Calculate effective study time:
           // - Start with total duration
@@ -1823,7 +1848,17 @@ Your goal is to ensure that even the most difficult concepts become easy to unde
       // Only count work duration, not break time
       const completedCycles = sessionData.completedCycles || 0;
       if (completedCycles > 0 && sessionData.workDuration > 0) {
-        const user = await storage.getUser(userId);
+        // Ensure user exists in database before updating stats
+        let user = await storage.getUser(userId);
+        if (!user) {
+          user = await storage.upsertUser({
+            id: userId,
+            email: req.user.email,
+            firstName: req.user.firstName || undefined,
+            lastName: req.user.lastName || undefined,
+            profileImageUrl: req.user.profileImageUrl || undefined,
+          });
+        }
         if (user) {
           // Calculate total work time: workDuration * completedCycles
           const workTimeMinutes = sessionData.workDuration * completedCycles;

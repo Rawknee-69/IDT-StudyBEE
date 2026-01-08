@@ -116,7 +116,11 @@ export default function Concentration() {
   const elapsedTimeRef = useRef(0);
   const tabSwitchesRef = useRef(0);
   const timeWastedRef = useRef(0);
+  const pauseCountRef = useRef(0);
+  const pauseDurationRef = useRef(0);
+  const pauseReasonsRef = useRef<Array<{ reason: string; duration: number; timestamp: string }>>([]);
   const isPausedRef = useRef(false);
+  const currentSessionIdRef = useRef<string | null>(null);
   const visibilityHandlerRef = useRef<(() => void) | null>(null);
 
   const { data: sessions } = useQuery<StudySession[]>({
@@ -126,7 +130,7 @@ export default function Concentration() {
 
   const startSessionMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("POST", "/api/study-sessions", {
+      const response = await apiRequest("POST", "/api/study-sessions", {
         duration: 0,
         tabSwitches: 0,
         timeWasted: 0,
@@ -135,9 +139,12 @@ export default function Concentration() {
         pauseDuration: 0,
         pauseReasons: [],
       });
+      return await response.json(); // Parse JSON from response
     },
     onSuccess: (data: any) => {
-      setCurrentSessionId(data.id);
+      if (data && data.id) {
+        setCurrentSessionId(data.id);
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/study-sessions"] });
     },
     onError: (error: Error) => {
@@ -160,7 +167,12 @@ export default function Concentration() {
       pauseDuration: number;
       pauseReasons: Array<{ reason: string; duration: number; timestamp: string }>;
     }) => {
-      return await apiRequest("PATCH", `/api/study-sessions/${data.sessionId}`, {
+      // Skip if sessionId is invalid
+      if (!data.sessionId) {
+        console.warn("Skipping update: no session ID");
+        return null;
+      }
+      const response = await apiRequest("PATCH", `/api/study-sessions/${data.sessionId}`, {
         duration: data.duration,
         tabSwitches: data.tabSwitches,
         timeWasted: data.timeWasted,
@@ -168,37 +180,50 @@ export default function Concentration() {
         pauseDuration: data.pauseDuration,
         pauseReasons: data.pauseReasons,
       });
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/study-sessions"] });
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      // Don't show error for auto-save failures (too noisy)
+      console.error("Auto-save error:", error.message);
     },
   });
 
   const endSessionMutation = useMutation({
-    mutationFn: async (sessionId: string) => {
-      return await apiRequest("PATCH", `/api/study-sessions/${sessionId}`, {
+    mutationFn: async (params: {
+      sessionId: string;
+      elapsedTime: number;
+      tabSwitches: number;
+      timeWasted: number;
+      pauseCount: number;
+      pauseDuration: number;
+      pauseReasons: Array<{ reason: string; duration: number; timestamp: string }>;
+    }) => {
+      // Calculate duration in minutes, ensuring at least 1 minute if any time was recorded
+      const durationMinutes = params.elapsedTime > 0 
+        ? Math.max(1, Math.round(params.elapsedTime / 60)) // Round instead of floor, minimum 1 min
+        : 0;
+      
+      const response = await apiRequest("PATCH", `/api/study-sessions/${params.sessionId}`, {
         endTime: new Date().toISOString(),
-        duration: Math.floor(elapsedTime / 60),
-        tabSwitches,
-        timeWasted: Math.floor(timeWasted / 60),
-        pauseCount,
-        pauseDuration, // Send in seconds as per schema
-        pauseReasons,
+        duration: durationMinutes,
+        tabSwitches: params.tabSwitches,
+        timeWasted: Math.round(params.timeWasted / 60), // Round instead of floor
+        pauseCount: params.pauseCount,
+        pauseDuration: params.pauseDuration,
+        pauseReasons: params.pauseReasons,
       });
+      return { response, params };
     },
-    onSuccess: () => {
+    onSuccess: ({ params }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/study-sessions"] });
-      const focusedTime = Math.floor((elapsedTime - timeWasted) / 60);
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] }); // Refresh user stats for analytics
+      const focusedTime = Math.max(0, Math.round((params.elapsedTime - params.timeWasted) / 60));
       toast({
         title: "Session Complete!",
-        description: `Focused for ${focusedTime} minutes with ${tabSwitches} interruptions and ${pauseCount} breaks.`,
+        description: `Focused for ${focusedTime} minute${focusedTime !== 1 ? 's' : ''} with ${params.tabSwitches} interruption${params.tabSwitches !== 1 ? 's' : ''} and ${params.pauseCount} break${params.pauseCount !== 1 ? 's' : ''}.`,
       });
     },
     onError: (error: Error) => {
@@ -239,8 +264,18 @@ export default function Concentration() {
   }, [elapsedTime, tabSwitches, timeWasted]);
 
   useEffect(() => {
+    pauseCountRef.current = pauseCount;
+    pauseDurationRef.current = pauseDuration;
+    pauseReasonsRef.current = pauseReasons;
+  }, [pauseCount, pauseDuration, pauseReasons]);
+
+  useEffect(() => {
     isPausedRef.current = isPaused;
   }, [isPaused]);
+
+  useEffect(() => {
+    currentSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
 
   useEffect(() => {
     return () => {
@@ -267,15 +302,19 @@ export default function Concentration() {
     }, 5 * 60 * 1000);
 
     autoSaveIntervalRef.current = setInterval(() => {
-      updateSessionMutation.mutate({
-        sessionId,
-        duration: Math.floor(elapsedTimeRef.current / 60),
-        tabSwitches: tabSwitchesRef.current,
-        timeWasted: Math.floor(timeWastedRef.current / 60),
-        pauseCount,
-        pauseDuration, // Send in seconds as per schema
-        pauseReasons,
-      });
+      // Use refs to get latest values
+      const currentSessionId = currentSessionIdRef.current;
+      if (currentSessionId) {
+        updateSessionMutation.mutate({
+          sessionId: currentSessionId,
+          duration: Math.max(1, Math.round(elapsedTimeRef.current / 60)),
+          tabSwitches: tabSwitchesRef.current,
+          timeWasted: Math.round(timeWastedRef.current / 60),
+          pauseCount: pauseCountRef.current,
+          pauseDuration: pauseDurationRef.current,
+          pauseReasons: pauseReasonsRef.current,
+        });
+      }
     }, 30 * 1000);
 
     // Only track tab switches when timer is RUNNING (not paused)
@@ -336,15 +375,19 @@ export default function Concentration() {
     }, 5 * 60 * 1000);
 
     autoSaveIntervalRef.current = setInterval(() => {
-      updateSessionMutation.mutate({
-        sessionId,
-        duration: Math.floor(elapsedTimeRef.current / 60),
-        tabSwitches: tabSwitchesRef.current,
-        timeWasted: Math.floor(timeWastedRef.current / 60),
-        pauseCount,
-        pauseDuration, // Send in seconds as per schema
-        pauseReasons,
-      });
+      // Use refs to get latest values
+      const currentSessionId = currentSessionIdRef.current;
+      if (currentSessionId) {
+        updateSessionMutation.mutate({
+          sessionId: currentSessionId,
+          duration: Math.max(1, Math.round(elapsedTimeRef.current / 60)),
+          tabSwitches: tabSwitchesRef.current,
+          timeWasted: Math.round(timeWastedRef.current / 60),
+          pauseCount: pauseCountRef.current,
+          pauseDuration: pauseDurationRef.current,
+          pauseReasons: pauseReasonsRef.current,
+        });
+      }
     }, 30 * 1000);
   };
 
@@ -415,10 +458,28 @@ export default function Concentration() {
     setIsActive(false);
     setIsPaused(false);
     
-    if (currentSessionId) {
-      endSessionMutation.mutate(currentSessionId);
+    // Capture current values before resetting (use refs for most up-to-date values)
+    const sessionId = currentSessionId;
+    const currentElapsedTime = elapsedTimeRef.current;
+    const currentTabSwitches = tabSwitchesRef.current;
+    const currentTimeWasted = timeWastedRef.current;
+    const currentPauseCount = pauseCount;
+    const currentPauseDuration = pauseDuration;
+    const currentPauseReasons = [...pauseReasons];
+    
+    if (sessionId) {
+      endSessionMutation.mutate({
+        sessionId,
+        elapsedTime: currentElapsedTime,
+        tabSwitches: currentTabSwitches,
+        timeWasted: currentTimeWasted,
+        pauseCount: currentPauseCount,
+        pauseDuration: currentPauseDuration,
+        pauseReasons: currentPauseReasons,
+      });
     }
     
+    // Reset state after capturing values
     setCurrentSessionId(null);
     setElapsedTime(0);
     setTabSwitches(0);

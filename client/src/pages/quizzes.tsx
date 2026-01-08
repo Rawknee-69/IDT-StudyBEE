@@ -136,6 +136,7 @@ export default function Quizzes() {
     onSuccess: (data: any, variables: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/quiz-attempts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] }); // Refresh user stats for analytics
       
       if (variables.isCancelled) {
         toast({
