@@ -44,9 +44,14 @@ export async function setupVite(app: Express, server: Server) {
   // Catch-all route for SPA - must be last and exclude API routes
   app.get("*", async (req, res, next) => {
     const url = req.originalUrl;
+    const pathname = req.path;
 
-    // Skip API routes and static assets
-    if (url.startsWith("/api") || url.startsWith("/_") || url.includes(".")) {
+    // Skip API routes, Vite internal routes, and static assets (check pathname, not full URL with query params)
+    if (
+      pathname.startsWith("/api") || 
+      pathname.startsWith("/_") || 
+      (pathname.includes(".") && !pathname.endsWith(".html"))
+    ) {
       return next();
     }
 
@@ -87,10 +92,14 @@ export function serveStatic(app: Express) {
   // fall through to index.html if the file doesn't exist
   // Exclude API routes and static assets
   app.get("*", (req, res) => {
-    const url = req.originalUrl;
+    const pathname = req.path;
     
-    // Skip API routes and static assets
-    if (url.startsWith("/api") || url.startsWith("/_") || url.includes(".")) {
+    // Skip API routes, Vite internal routes, and static assets (check pathname, not full URL with query params)
+    if (
+      pathname.startsWith("/api") || 
+      pathname.startsWith("/_") || 
+      (pathname.includes(".") && !pathname.endsWith(".html"))
+    ) {
       return res.status(404).json({ message: "Not found" });
     }
     

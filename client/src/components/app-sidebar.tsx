@@ -69,7 +69,7 @@ export function AppSidebar() {
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-2">
           <BookOpen className="h-6 w-6 text-primary" />
-          <span className="font-heading font-bold text-xl">Ascend</span>
+          <span className="font-heading font-bold text-xl">Study Bee</span>
         </div>
       </SidebarHeader>
 

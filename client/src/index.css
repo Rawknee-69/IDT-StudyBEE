@@ -372,3 +372,268 @@
     display: none;  /* Chrome, Safari and Opera */
   }
 }
+
+/* Clerk Customization - Remove Branding and Match App Theme */
+@layer utilities {
+  /* Hide Clerk branding */
+  [data-clerk-element="cl-logo"],
+  [data-clerk-element="cl-logoBox"],
+  .cl-logo,
+  .cl-logoBox,
+  .cl-poweredByClerk,
+  [data-clerk-element="cl-poweredByClerk"],
+  a[href*="clerk.com"],
+  a[href*="clerk.dev"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Override Clerk modal styles */
+  .cl-modalContent,
+  [data-clerk-element="cl-modalContent"],
+  .cl-modal,
+  [data-clerk-element="cl-modal"],
+  .cl-rootBox,
+  [data-clerk-element="cl-rootBox"] {
+    background-color: hsl(var(--background)) !important;
+    border-radius: var(--radius) !important;
+    box-shadow: var(--shadow-2xl) !important;
+    border: 1px solid hsl(var(--border)) !important;
+    overflow: hidden !important;
+  }
+
+  /* Ensure modal inner containers also have rounded corners */
+  .cl-modalContent > *,
+  [data-clerk-element="cl-modalContent"] > *,
+  .cl-cardBox,
+  [data-clerk-element="cl-cardBox"] {
+    border-radius: var(--radius) !important;
+  }
+
+  /* Fix first and last child corners */
+  .cl-modalContent > *:first-child,
+  [data-clerk-element="cl-modalContent"] > *:first-child {
+    border-top-left-radius: var(--radius) !important;
+    border-top-right-radius: var(--radius) !important;
+  }
+
+  .cl-modalContent > *:last-child,
+  [data-clerk-element="cl-modalContent"] > *:last-child {
+    border-bottom-left-radius: var(--radius) !important;
+    border-bottom-right-radius: var(--radius) !important;
+  }
+
+  .cl-modalBackdrop,
+  [data-clerk-element="cl-modalBackdrop"] {
+    background-color: rgba(0, 0, 0, 0.5) !important;
+    backdrop-filter: blur(8px) !important;
+  }
+
+  /* Style Clerk cards */
+  .cl-card,
+  [data-clerk-element="cl-card"],
+  .cl-cardBox,
+  [data-clerk-element="cl-cardBox"] {
+    background-color: hsl(var(--card)) !important;
+    border-color: hsl(var(--border)) !important;
+    border-radius: var(--radius) !important;
+    box-shadow: var(--shadow-lg) !important;
+    overflow: hidden !important;
+  }
+
+  /* Ensure card content respects border radius */
+  .cl-card > *,
+  [data-clerk-element="cl-card"] > * {
+    border-radius: inherit !important;
+  }
+
+  /* Style Clerk buttons */
+  .cl-button,
+  [data-clerk-element="cl-button"] {
+    font-family: var(--font-heading) !important;
+    border-radius: var(--radius) !important;
+    transition: all 0.2s ease !important;
+  }
+
+  .cl-buttonPrimary,
+  [data-clerk-element="cl-buttonPrimary"] {
+    background-color: hsl(var(--primary)) !important;
+    color: hsl(var(--primary-foreground)) !important;
+    border: none !important;
+  }
+
+  .cl-buttonPrimary:hover,
+  [data-clerk-element="cl-buttonPrimary"]:hover {
+    background-color: hsl(84, 81%, 50%) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: var(--shadow-md) !important;
+  }
+
+  /* Style Clerk inputs */
+  .cl-input,
+  [data-clerk-element="cl-input"],
+  .cl-fieldInput,
+  [data-clerk-element="cl-fieldInput"],
+  input[class*="cl-"],
+  input[data-clerk-element] {
+    background-color: hsl(var(--card)) !important;
+    border-color: hsl(var(--border)) !important;
+    color: hsl(var(--foreground)) !important;
+    border-radius: var(--radius) !important;
+    font-family: var(--font-sans) !important;
+  }
+
+  .cl-input:focus,
+  [data-clerk-element="cl-input"]:focus,
+  .cl-fieldInput:focus,
+  [data-clerk-element="cl-fieldInput"]:focus {
+    border-color: hsl(var(--primary)) !important;
+    box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2) !important;
+    outline: none !important;
+  }
+
+  /* Style Clerk labels */
+  .cl-label,
+  [data-clerk-element="cl-label"],
+  .cl-fieldLabel,
+  [data-clerk-element="cl-fieldLabel"] {
+    color: hsl(var(--foreground)) !important;
+    font-family: var(--font-heading) !important;
+    font-weight: 500 !important;
+  }
+
+  /* Style Clerk headers */
+  .cl-headerTitle,
+  [data-clerk-element="cl-headerTitle"] {
+    font-family: var(--font-heading) !important;
+    font-weight: 700 !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  .cl-headerSubtitle,
+  [data-clerk-element="cl-headerSubtitle"] {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* Style Clerk links */
+  .cl-link,
+  [data-clerk-element="cl-link"],
+  .cl-footerActionLink,
+  [data-clerk-element="cl-footerActionLink"] {
+    color: hsl(var(--primary)) !important;
+    font-family: var(--font-heading) !important;
+  }
+
+  .cl-link:hover,
+  [data-clerk-element="cl-link"]:hover,
+  .cl-footerActionLink:hover,
+  [data-clerk-element="cl-footerActionLink"]:hover {
+    color: hsl(84, 81%, 50%) !important;
+  }
+
+  /* Style Clerk social buttons */
+  .cl-socialButtonsBlockButton,
+  [data-clerk-element="cl-socialButtonsBlockButton"] {
+    background-color: hsl(var(--card)) !important;
+    border-color: hsl(var(--border)) !important;
+    color: hsl(var(--foreground)) !important;
+    font-family: var(--font-heading) !important;
+    border-radius: var(--radius) !important;
+  }
+
+  .cl-socialButtonsBlockButton:hover,
+  [data-clerk-element="cl-socialButtonsBlockButton"]:hover {
+    background-color: hsl(var(--accent)) !important;
+    border-color: hsl(var(--primary)) !important;
+  }
+
+  /* Style Clerk OTP code fields */
+  .cl-otpCodeFieldInput,
+  [data-clerk-element="cl-otpCodeFieldInput"],
+  .cl-otpCodeField,
+  [data-clerk-element="cl-otpCodeField"],
+  input[class*="otp"],
+  input[data-clerk-element*="otp"] {
+    border-radius: var(--radius) !important;
+    background-color: hsl(var(--card)) !important;
+    border-color: hsl(var(--border)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Ensure all form elements have rounded corners */
+  .cl-formField,
+  [data-clerk-element="cl-formField"],
+  .cl-formFieldRow,
+  [data-clerk-element="cl-formFieldRow"] {
+    border-radius: var(--radius) !important;
+  }
+
+  /* Fix any square corners on modal containers */
+  .cl-modalContent *,
+  [data-clerk-element="cl-modalContent"] * {
+    border-radius: inherit !important;
+  }
+
+  /* Ensure header and footer respect border radius */
+  .cl-header,
+  [data-clerk-element="cl-header"],
+  .cl-footer,
+  [data-clerk-element="cl-footer"] {
+    border-radius: inherit !important;
+  }
+
+  /* Style Clerk error messages */
+  .cl-alertText,
+  [data-clerk-element="cl-alertText"],
+  .cl-fieldErrorText,
+  [data-clerk-element="cl-fieldErrorText"] {
+    color: hsl(var(--destructive)) !important;
+  }
+
+  /* Style Clerk divider */
+  .cl-dividerLine,
+  [data-clerk-element="cl-dividerLine"] {
+    background-color: hsl(var(--border)) !important;
+  }
+
+  .cl-dividerText,
+  [data-clerk-element="cl-dividerText"] {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* Dark mode adjustments */
+  .dark .cl-card,
+  .dark [data-clerk-element="cl-card"] {
+    background-color: hsl(var(--card)) !important;
+    border-color: hsl(var(--border)) !important;
+  }
+
+  .dark .cl-input,
+  .dark [data-clerk-element="cl-input"] {
+    background-color: hsl(var(--card)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Remove any remaining Clerk branding text */
+  *[aria-label*="Clerk"],
+  *[title*="Clerk"] {
+    display: none !important;
+  }
+
+  /* Additional Clerk element hiding */
+  [class*="cl-poweredBy"],
+  [class*="cl-logo"],
+  [id*="clerk-logo"],
+  [id*="clerk-powered"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+  }
+}
