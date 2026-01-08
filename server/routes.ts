@@ -140,6 +140,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
+      // Track if client disconnected
+      let clientDisconnected = false;
+      
+      // Listen for client disconnect
+      req.on('close', () => {
+        clientDisconnected = true;
+        console.log(`Client disconnected for material ${materialId}, stopping search`);
+      });
+
+      req.on('aborted', () => {
+        clientDisconnected = true;
+        console.log(`Request aborted for material ${materialId}, stopping search`);
+      });
+
+      // Helper to check if we should continue processing
+      const shouldContinue = () => {
+        if (clientDisconnected) {
+          return false;
+        }
+        // Check if response is still writable
+        if (res.destroyed || res.closed) {
+          return false;
+        }
+        return true;
+      };
+
       // Check if we have cached topics and videos (unless regenerating)
       let topics: string[] = [];
 
@@ -383,8 +409,26 @@ Do not include any additional text, explanations, or markdown formatting - just 
             if (!videoRenderer || !videoRenderer.videoId) continue;
             
             const videoId = videoRenderer.videoId;
+            
+            // Validate video ID format (must be 11 characters, alphanumeric + _ and -)
+            if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+              console.warn(`Invalid video ID format: ${videoId}`);
+              continue;
+            }
+            
+            // Skip if video is marked as unavailable or private
+            if (videoRenderer.unplayableText || videoRenderer.thumbnailOverlays?.some((overlay: any) => 
+              overlay.thumbnailOverlayUnplayableStatusRenderer)) {
+              continue;
+            }
+            
             const title = videoRenderer.title?.runs?.[0]?.text || videoRenderer.title?.simpleText || '';
             const channelTitle = videoRenderer.ownerText?.runs?.[0]?.text || videoRenderer.channelName?.simpleText || '';
+            
+            // Skip if no title (likely invalid)
+            if (!title || title.trim().length === 0) {
+              continue;
+            }
             
             // Get thumbnail (prefer high quality)
             let thumbnail = '';
@@ -416,17 +460,15 @@ Do not include any additional text, explanations, or markdown formatting - just 
                                videoRenderer.descriptionSnippet?.simpleText || 
                                '';
 
-            if (videoId && title) {
-              videos.push({
-                videoId,
-                title,
-                channelTitle,
-                thumbnail,
-                duration: durationSeconds,
-                viewCount,
-                description,
-              });
-            }
+            videos.push({
+              videoId,
+              title,
+              channelTitle,
+              thumbnail,
+              duration: durationSeconds,
+              viewCount,
+              description,
+            });
           }
         } catch (error) {
           console.error('Error extracting videos from YouTube data:', error);
@@ -449,6 +491,88 @@ Do not include any additional text, explanations, or markdown formatting - just 
           return Math.floor(num * 1000000000);
         }
         return Math.floor(num);
+      };
+
+      // Helper function to validate video ID and check if video is available
+      const validateVideoId = async (videoId: string): Promise<boolean> => {
+        try {
+          // Validate video ID format (YouTube IDs are 11 characters)
+          if (!videoId || videoId.length !== 11 || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+            return false;
+          }
+
+          // Check video availability using YouTube's oEmbed endpoint (no API key needed)
+          // This is a lightweight check that doesn't count against API quota
+          const oEmbedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+          
+          // Create abort controller for timeout
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
+          
+          const response = await fetch(oEmbedUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': 'application/json',
+            },
+            signal: controller.signal,
+          });
+          
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            // 404 or other errors mean video is unavailable
+            return false;
+          }
+
+          // Try to parse the response to ensure it's valid
+          const data = await response.json();
+          return !!(data && data.html);
+        } catch (error: any) {
+          // Timeout or network errors - assume video might be available but skip validation
+          if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+            console.warn(`Timeout validating video ${videoId}, skipping validation`);
+            // Return true to allow the video through if validation times out
+            return true;
+          }
+          console.error(`Error validating video ${videoId}:`, error.message);
+          return false;
+        }
+      };
+
+      // Helper function to calculate relevance score between topic and video
+      const calculateRelevance = (topic: string, videoTitle: string, videoDescription: string): number => {
+        const topicLower = topic.toLowerCase();
+        const titleLower = videoTitle.toLowerCase();
+        const descLower = videoDescription.toLowerCase();
+        
+        // Extract key terms from topic (remove common words)
+        const commonWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from'];
+        const topicWords = topicLower
+          .split(/[\s,()]+/)
+          .filter(word => word.length > 2 && !commonWords.includes(word));
+        
+        let score = 0;
+        let matches = 0;
+        
+        for (const word of topicWords) {
+          if (titleLower.includes(word)) {
+            score += 3; // Title matches are more important
+            matches++;
+          } else if (descLower.includes(word)) {
+            score += 1; // Description matches are less important
+            matches++;
+          }
+        }
+        
+        // Bonus for exact phrase match
+        if (titleLower.includes(topicLower) || descLower.includes(topicLower)) {
+          score += 5;
+        }
+        
+        // Normalize by topic word count
+        const normalizedScore = topicWords.length > 0 ? (score / topicWords.length) : 0;
+        
+        return normalizedScore;
       };
 
       // Step 1: Check cache and collect topics that need searching
@@ -489,36 +613,84 @@ Do not include any additional text, explanations, or markdown formatting - just 
       const topicToVideo: Map<string, any> = new Map();
       
       for (let i = 0; i < topicsToSearch.length; i++) {
+        // Check if client disconnected before processing each topic
+        if (!shouldContinue()) {
+          console.log('Stopping search - client disconnected');
+          break;
+        }
+
         const topic = topicsToSearch[i];
         try {
           // Add delay between requests to be respectful (500ms delay)
           if (i > 0) {
             await new Promise(resolve => setTimeout(resolve, 500));
+            // Check again after delay
+            if (!shouldContinue()) {
+              break;
+            }
           }
 
-          // Search query optimized for educational content
-          const searchQuery = `${topic} lecture tutorial educational`;
+          // Build more specific search query with context from material title
+          // Include material title context if available to improve relevance
+          const materialContext = material.title ? ` ${material.title}` : '';
+          const searchQuery = `${topic}${materialContext} lecture tutorial educational course explanation`;
           
-          res.write(`data: ${JSON.stringify({ type: 'status', message: `Searching for: ${topic}...` })}\n\n`);
+          if (shouldContinue()) {
+            res.write(`data: ${JSON.stringify({ type: 'status', message: `Searching for: ${topic}...` })}\n\n`);
+          }
           
           const videos = await searchYouTube(searchQuery);
           
+          // Check again after search
+          if (!shouldContinue()) {
+            break;
+          }
+          
           if (videos && videos.length > 0) {
-            // Filter for long-form videos (>60 seconds) and find the best one
-            let bestVideo: any = null;
+            // Filter and score videos for relevance
+            const validVideos: Array<{ video: any; relevance: number; score: number }> = [];
+            
             for (const video of videos) {
-              // Only select videos longer than 60 seconds (filter out shorts)
-              if (video.duration > 60) {
-                // Choose video with highest view count
-                if (!bestVideo || video.viewCount > bestVideo.viewCount) {
-                  bestVideo = video;
-                }
+              // Only consider long-form videos (>60 seconds)
+              if (video.duration <= 60) continue;
+              
+              // Validate video ID
+              const isValid = await validateVideoId(video.videoId);
+              if (!isValid) {
+                console.warn(`Skipping invalid/unavailable video: ${video.videoId}`);
+                continue;
               }
+              
+              // Calculate relevance score
+              const relevance = calculateRelevance(topic, video.title, video.description);
+              
+              // Combined score: relevance (70%) + view count normalized (30%)
+              // Normalize view count (assume max 10M views for normalization)
+              const normalizedViews = Math.min(video.viewCount / 10000000, 1) * 30;
+              const combinedScore = (relevance * 70) + normalizedViews;
+              
+              validVideos.push({
+                video,
+                relevance,
+                score: combinedScore,
+              });
             }
 
-            if (bestVideo) {
+            // Sort by combined score and select the best one
+            validVideos.sort((a, b) => b.score - a.score);
+            
+            // Only use videos with minimum relevance (at least 1 matching word)
+            const bestMatch = validVideos.find(v => v.relevance > 0);
+            
+            if (bestMatch) {
+              const bestVideo = bestMatch.video;
               topicToVideo.set(topic, bestVideo);
               
+              // Check if client is still connected before storing and sending
+              if (!shouldContinue()) {
+                break;
+              }
+
               // Send immediately (lazy loading)
               const recommendation = {
                 topic: topic,
@@ -529,30 +701,50 @@ Do not include any additional text, explanations, or markdown formatting - just 
                 description: bestVideo.description || "",
               };
 
-              // Store in DB
-              await storage.createYoutubeRecommendation({
-                materialId,
-                topic: topic,
-                videoId: bestVideo.videoId,
-                title: bestVideo.title,
-                channelTitle: bestVideo.channelTitle,
-                thumbnail: bestVideo.thumbnail,
-                description: bestVideo.description || "",
-                viewCount: bestVideo.viewCount,
-                duration: bestVideo.duration,
-              });
+              // Store in DB (only if client still connected)
+              try {
+                await storage.createYoutubeRecommendation({
+                  materialId,
+                  topic: topic,
+                  videoId: bestVideo.videoId,
+                  title: bestVideo.title,
+                  channelTitle: bestVideo.channelTitle,
+                  thumbnail: bestVideo.thumbnail,
+                  description: bestVideo.description || "",
+                  viewCount: bestVideo.viewCount,
+                  duration: bestVideo.duration,
+                });
 
-              res.write(`data: ${JSON.stringify({ type: 'video', recommendation })}\n\n`);
+                if (shouldContinue()) {
+                  res.write(`data: ${JSON.stringify({ type: 'video', recommendation })}\n\n`);
+                }
+              } catch (dbError) {
+                console.error(`Error storing recommendation for topic "${topic}":`, dbError);
+              }
+            } else {
+              console.warn(`No relevant videos found for topic: ${topic}`);
             }
           }
         } catch (error: any) {
-          console.error(`Error searching YouTube for topic "${topic}":`, error.message);
-          // Continue with other topics
+          // Don't log if client disconnected
+          if (!clientDisconnected) {
+            console.error(`Error searching YouTube for topic "${topic}":`, error.message);
+          }
+          // Continue with other topics only if client still connected
+          if (!shouldContinue()) {
+            break;
+          }
         }
       }
 
-      res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);
-      res.end();
+      // Only send complete if client is still connected
+      if (shouldContinue()) {
+        res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);
+        res.end();
+      } else {
+        // Client disconnected, just end the response
+        res.end();
+      }
     } catch (error: any) {
       console.error("Error generating YouTube recommendations:", error);
       res.write(`data: ${JSON.stringify({ type: 'error', message: error.message || "Failed to generate YouTube recommendations" })}\n\n`);

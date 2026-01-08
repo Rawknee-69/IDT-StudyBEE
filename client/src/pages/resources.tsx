@@ -28,7 +28,7 @@ export default function Resources() {
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [isComplete, setIsComplete] = useState(false);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -49,21 +49,25 @@ export default function Resources() {
     enabled: isAuthenticated,
   });
 
-  // Cleanup EventSource on unmount or dialog close
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
     };
   }, []);
 
   const loadRecommendations = async (material: StudyMaterial, regenerate: boolean = false) => {
-    // Close existing connection
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
+
+    // Create new AbortController for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     // Reset state
     setRecommendations([]);
@@ -79,11 +83,12 @@ export default function Resources() {
 
       const url = `/api/resources/youtube-recommendations/${material.id}${regenerate ? '?regenerate=true' : ''}`;
       
-      // Use fetch with streaming
+      // Use fetch with streaming and abort signal
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
+        signal: abortController.signal,
       });
 
       if (!response.ok) {
@@ -100,6 +105,12 @@ export default function Resources() {
       let buffer = '';
 
       while (true) {
+        // Check if request was aborted
+        if (abortController.signal.aborted) {
+          reader.cancel();
+          break;
+        }
+
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -111,6 +122,11 @@ export default function Resources() {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
+              
+              // Don't update state if request was aborted
+              if (abortController.signal.aborted) {
+                break;
+              }
               
               if (data.type === 'status') {
                 setStatusMessage(data.message);
@@ -135,6 +151,13 @@ export default function Resources() {
         }
       }
     } catch (error: any) {
+      // Don't show error if request was aborted (user closed dialog)
+      if (error.name === 'AbortError' || abortController.signal.aborted) {
+        console.log('Request cancelled by user');
+        setIsLoadingRecommendations(false);
+        return;
+      }
+      
       console.error('Error loading recommendations:', error);
       toast({
         title: "Error",
@@ -142,6 +165,11 @@ export default function Resources() {
         variant: "destructive",
       });
       setIsLoadingRecommendations(false);
+    } finally {
+      // Clear abort controller if this was the active request
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
     }
   };
 
@@ -158,14 +186,17 @@ export default function Resources() {
   };
 
   const handleDialogClose = () => {
+    // Cancel any ongoing requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    
     setIsDialogOpen(false);
     setRecommendations([]);
     setIsComplete(false);
     setStatusMessage("");
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
+    setIsLoadingRecommendations(false);
   };
 
   const handleDownload = async (material: StudyMaterial) => {
