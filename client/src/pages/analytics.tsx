@@ -2,14 +2,14 @@ import { useState, useMemo } from "react";
 import { useAuth } from "@/lib/clerkAuth";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
-import { TrendingUp, Target, Clock, Focus, Flame, BarChart3, Activity } from "lucide-react";
+import {  Target, Clock,  Flame, BarChart3 } from "lucide-react";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
+import { LineChart, Line,  AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { cn } from "@/lib/utils";
 import { format, addDays, isSameDay, getHours } from "date-fns";
 
@@ -134,15 +134,19 @@ export default function Analytics() {
     
     const hadStudySession = (day: Date): boolean => {
       if (!studySessions) return false;
-      return studySessions.some(s => {
-        if (!s.isConcentrationMode || (s.duration || 0) < 30) return false;
-        try {
-          const sessionDate = new Date(s.startTime);
-          return isSameDay(sessionDate, day);
-        } catch {
-          return false;
-        }
-      });
+      const dailyDuration = studySessions
+        .filter(s => {
+          if (!s.isConcentrationMode) return false;
+          try {
+            const sessionDate = new Date(s.startTime);
+            return isSameDay(sessionDate, day);
+          } catch {
+            return false;
+          }
+        })
+        .reduce((sum, s) => sum + (s.duration || 0), 0);
+      
+      return dailyDuration >= 1;
     };
 
     if (viewMode === "days") {
@@ -568,13 +572,13 @@ export default function Analytics() {
 
                     {}
                     <Line
-                        yAxisId="right"
+                        yAxisId="left"
                         type="stepAfter"
                         dataKey="streak"
                         stroke="hsl(24, 100%, 50%)"
-                        strokeWidth={2}
-                        dot={{ r: 3, fill: "hsl(24, 100%, 50%)" }}
-                        activeDot={{ r: 5, strokeWidth: 0, fill: "hsl(24, 100%, 50%)" }}
+                        strokeWidth={3}
+                        dot={{ r: 5, fill: "hsl(24, 100%, 50%)", stroke: "hsl(24, 100%, 30%)", strokeWidth: 2 }}
+                        activeDot={{ r: 7, strokeWidth: 0, fill: "hsl(24, 100%, 50%)" }}
                         isAnimationActive={true}
                     />
                 </AreaChart>
@@ -595,15 +599,15 @@ export default function Analytics() {
       <div className="grid md:grid-cols-3 gap-6">
         <Card className="p-6 border bg-card/50">
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-xl bg-gamification/10">
-              <Flame className="h-5 w-5 text-gamification" />
+            <div className="p-2 rounded-xl" style={{ backgroundColor: "hsla(24, 100%, 50%, 0.1)" }}>
+              <Flame className="h-5 w-5" style={{ color: "hsl(24, 100%, 50%)" }} />
             </div>
             <div>
               <h3 className="font-semibold">Current Streak</h3>
               <p className="text-xs text-muted-foreground">Days of consistent study</p>
             </div>
           </div>
-          <div className="text-4xl font-bold text-gamification mb-2">
+          <div className="text-4xl font-bold mb-2" style={{ color: "hsl(24, 100%, 50%)" }}>
             {userStats.currentStreak}
           </div>
           <div className="text-sm text-muted-foreground">
@@ -613,15 +617,15 @@ export default function Analytics() {
 
         <Card className="p-6 border bg-card/50">
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-xl bg-success/10">
-              <Target className="h-5 w-5 text-success" />
+            <div className="p-2 rounded-xl" style={{ backgroundColor: "hsla(217, 91%, 60%, 0.1)" }}>
+              <Target className="h-5 w-5" style={{ color: "hsl(217, 91%, 60%)" }} />
             </div>
             <div>
               <h3 className="font-semibold">Quiz Accuracy</h3>
               <p className="text-xs text-muted-foreground">Average score</p>
             </div>
           </div>
-          <div className="text-4xl font-bold text-success mb-2">
+          <div className="text-4xl font-bold mb-2" style={{ color: "hsl(217, 91%, 60%)" }}>
             {averageQuizScore}%
           </div>
           <div className="text-sm text-muted-foreground">
