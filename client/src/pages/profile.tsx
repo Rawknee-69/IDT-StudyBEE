@@ -1,23 +1,38 @@
 import { useAuth } from "@/lib/clerkAuth";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { User } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { useLocation } from "wouter";
+
+type DbUser = {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
+  degree: string | null;
+  className: string | null;
+};
 
 export default function Profile() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { data: dbUser } = useQuery<DbUser>({
+    queryKey: ["/api/auth/user"],
+    enabled: isAuthenticated,
+  });
   const [degree, setDegree] = useState("");
   const [className, setClassName] = useState("");
+  const initializedFromUser = useRef(false);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -32,17 +47,20 @@ export default function Profile() {
       return;
     }
 
-    if (user) {
-      setDegree(user.degree || "");
-      setClassName(user.className || "");
+    if (dbUser && !initializedFromUser.current) {
+      setDegree(dbUser.degree || "");
+      setClassName(dbUser.className || "");
+      initializedFromUser.current = true;
     }
-  }, [isAuthenticated, isLoading, user, toast]);
+  }, [isAuthenticated, isLoading, dbUser, toast]);
 
   const updateProfileMutation = useMutation({
     mutationFn: async (data: { degree: string; className: string }) => {
-      return await apiRequest("PATCH", "/api/user/profile", data);
+      const res = await apiRequest("PATCH", "/api/user/profile", data);
+      return res.json() as Promise<DbUser>;
     },
-    onSuccess: () => {
+    onSuccess: (updatedUser) => {
+      queryClient.setQueryData<DbUser>(["/api/auth/user"], updatedUser);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({
         title: "Profile Updated",
@@ -83,7 +101,7 @@ export default function Profile() {
     updateProfileMutation.mutate({ degree: degree.trim(), className: className.trim() });
   };
 
-  if (isLoading) {
+  if (isLoading || (isAuthenticated && dbUser === undefined)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -97,6 +115,8 @@ export default function Profile() {
   if (!user) {
     return null;
   }
+
+  const displayEmail = dbUser?.email ?? user.email ?? "";
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-2xl">
@@ -114,7 +134,7 @@ export default function Profile() {
             <Input
               id="email"
               type="email"
-              value={user.email || ""}
+              value={displayEmail}
               disabled
               className="bg-muted"
               data-testid="input-email"

@@ -496,27 +496,53 @@ export default function Chat() {
                       <Loader2 className="h-3.5 w-3.5 md:h-4 md:w-4 text-primary animate-spin" />
                     </AvatarFallback>
                   </Avatar>
-                  <div className="rounded-xl px-3 py-2 max-w-[80%] md:max-w-xl bg-card border-2 shadow-sm">
+                  <div className="rounded-xl px-3 py-2.5 min-h-[52px] max-w-[80%] md:max-w-xl bg-card border-2 border-primary/20 shadow-sm flex items-center">
                     {streamingMessage ? (
-                      <>
+                      <div className="w-full">
                         <p className="whitespace-pre-wrap break-words text-xs md:text-sm leading-relaxed">{streamingMessage}</p>
                         <div className="flex items-center gap-1 mt-1.5">
-                          <div className="h-1.5 w-1.5 bg-primary rounded-full animate-pulse"></div>
-                          <div className="h-1.5 w-1.5 bg-primary rounded-full animate-pulse delay-75"></div>
-                          <div className="h-1.5 w-1.5 bg-primary rounded-full animate-pulse delay-150"></div>
+                          <div className="h-1.5 w-1.5 bg-primary rounded-full animate-pulse" />
+                          <div className="h-1.5 w-1.5 bg-primary rounded-full animate-pulse [animation-delay:75ms]" />
+                          <div className="h-1.5 w-1.5 bg-primary rounded-full animate-pulse [animation-delay:150ms]" />
                         </div>
-                      </>
+                      </div>
                     ) : (
-                      <div className="space-y-1.5">
-                        <div className="h-3 bg-muted rounded w-3/4 animate-pulse"></div>
-                        <div className="h-3 bg-muted rounded w-full animate-pulse"></div>
-                        <div className="h-3 bg-muted rounded w-5/6 animate-pulse"></div>
+                      <div className="flex items-center gap-2 w-full text-muted-foreground">
+                        <div className="flex gap-1">
+                          <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce [animation-delay:0ms]" />
+                          <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce [animation-delay:150ms]" />
+                          <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce [animation-delay:300ms]" />
+                        </div>
+                        <span className="text-xs md:text-sm">Thinking...</span>
                       </div>
                     )}
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
+          ) : isStreaming ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex gap-2 justify-start"
+            >
+              <Avatar className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 ring-2 ring-primary/10">
+                <AvatarImage src="/ai-avatar.png" alt="AI Assistant" />
+                <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10">
+                  <Loader2 className="h-3.5 w-3.5 md:h-4 md:w-4 text-primary animate-spin" />
+                </AvatarFallback>
+              </Avatar>
+              <div className="rounded-xl px-3 py-2.5 min-h-[52px] max-w-[80%] md:max-w-xl bg-card border-2 border-primary/20 shadow-sm flex items-center">
+                <div className="flex items-center gap-2 w-full text-muted-foreground">
+                  <div className="flex gap-1">
+                    <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce [animation-delay:0ms]" />
+                    <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce [animation-delay:150ms]" />
+                    <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce [animation-delay:300ms]" />
+                  </div>
+                  <span className="text-xs md:text-sm">Thinking...</span>
+                </div>
+              </div>
+            </motion.div>
           ) : (
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
