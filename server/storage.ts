@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, asc, sql, gt } from "drizzle-orm";
+import { eq, desc, asc, sql, gt, and } from "drizzle-orm";
 import type {
   User,
   InsertUser,
@@ -43,6 +43,8 @@ import type {
   InsertMaterialTopics,
   YoutubeRecommendation,
   InsertYoutubeRecommendation,
+  QuerySearch,
+  InsertQuerySearch,
 } from "@shared/schema";
 import {
   users,
@@ -65,6 +67,7 @@ import {
   collabPresentationEditors,
   materialTopics,
   youtubeRecommendations,
+  querySearches,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -214,6 +217,10 @@ export interface IStorage {
   getYoutubeRecommendationByTopic(materialId: string, topic: string): Promise<YoutubeRecommendation | undefined>;
   createYoutubeRecommendation(recommendation: InsertYoutubeRecommendation): Promise<YoutubeRecommendation>;
   deleteYoutubeRecommendationsByMaterial(materialId: string): Promise<void>;
+
+  createQuerySearch(userId: string, query: string): Promise<QuerySearch>;
+  getQuerySearchesByUser(userId: string, limit?: number): Promise<QuerySearch[]>;
+  deleteQuerySearch(id: string, userId: string): Promise<void>;
 
   getTodayStudyTime(userId: string): Promise<number>;
 }
@@ -884,6 +891,26 @@ export class DbStorage implements IStorage {
 
   async deleteYoutubeRecommendationsByMaterial(materialId: string): Promise<void> {
     await db.delete(youtubeRecommendations).where(eq(youtubeRecommendations.materialId, materialId));
+  }
+
+  async createQuerySearch(userId: string, query: string): Promise<QuerySearch> {
+    const result = await db.insert(querySearches).values({ userId, query }).returning();
+    return result[0];
+  }
+
+  async getQuerySearchesByUser(userId: string, limit = 20): Promise<QuerySearch[]> {
+    return await db
+      .select()
+      .from(querySearches)
+      .where(eq(querySearches.userId, userId))
+      .orderBy(desc(querySearches.createdAt))
+      .limit(limit);
+  }
+
+  async deleteQuerySearch(id: string, userId: string): Promise<void> {
+    await db
+      .delete(querySearches)
+      .where(and(eq(querySearches.id, id), eq(querySearches.userId, userId)));
   }
 
   async getTodayStudyTime(userId: string): Promise<number> {

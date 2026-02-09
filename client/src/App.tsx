@@ -18,6 +18,7 @@ const Profile = lazy(() => import("@/pages/profile"));
 const Materials = lazy(() => import("@/pages/materials"));
 const MaterialDetail = lazy(() => import("@/pages/material-detail"));
 const Resources = lazy(() => import("@/pages/resources"));
+const QuerySearch = lazy(() => import("@/pages/query-search"));
 const Chat = lazy(() => import("@/pages/chat"));
 const Flashcards = lazy(() => import("@/pages/flashcards"));
 const Quizzes = lazy(() => import("@/pages/quizzes"));
@@ -71,6 +72,7 @@ function Router() {
         <Route path="/materials/:id" component={MaterialDetail} />
         <Route path="/materials" component={Materials} />
         <Route path="/resources" component={Resources} />
+        <Route path="/query-search" component={QuerySearch} />
         <Route path="/chat" component={Chat} />
         <Route path="/flashcards" component={Flashcards} />
         <Route path="/quizzes" component={Quizzes} />

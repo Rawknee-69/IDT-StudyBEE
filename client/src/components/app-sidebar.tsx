@@ -28,6 +28,7 @@ import {
   Home,
   FolderOpen,
   BarChart3,
+  Search,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/clerkAuth";
@@ -38,6 +39,7 @@ const studyItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Study Materials", url: "/materials", icon: BookOpen },
   { title: "Resources", url: "/resources", icon: FolderOpen },
+  { title: "Query Search", url: "/query-search", icon: Search },
   { title: "AI Chat", url: "/chat", icon: Brain },
   { title: "Flashcards", url: "/flashcards", icon: FileText },
   { title: "Quizzes", url: "/quizzes", icon: Target },

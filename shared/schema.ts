@@ -441,6 +441,17 @@ export const youtubeRecommendations = pgTable("youtube_recommendations", {
   index("idx_youtube_recommendations_material_topic").on(table.materialId, table.topic),
 ]);
 
+export const querySearches = pgTable(
+  "query_searches",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    query: text("query").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [index("idx_query_searches_user_created").on(table.userId, table.createdAt)],
+);
+
 export const insertMaterialTopicsSchema = createInsertSchema(materialTopics).omit({
   id: true,
   extractedAt: true,
@@ -451,8 +462,16 @@ export const insertYoutubeRecommendationSchema = createInsertSchema(youtubeRecom
   createdAt: true,
 });
 
+export const insertQuerySearchSchema = createInsertSchema(querySearches).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type InsertMaterialTopics = z.infer<typeof insertMaterialTopicsSchema>;
 export type MaterialTopics = typeof materialTopics.$inferSelect;
 
 export type InsertYoutubeRecommendation = z.infer<typeof insertYoutubeRecommendationSchema>;
 export type YoutubeRecommendation = typeof youtubeRecommendations.$inferSelect;
+
+export type InsertQuerySearch = z.infer<typeof insertQuerySearchSchema>;
+export type QuerySearch = typeof querySearches.$inferSelect;

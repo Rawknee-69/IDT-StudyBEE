@@ -7,7 +7,7 @@ import { createPartFromUri, GoogleGenAI } from "@google/genai";
 
 import { generateAudioFromText } from "./deepgram";
 
-import { sanitizeMarkdown, sanitizeUserInput, sanitizeForAudio, sanitizeMindMapNode } from "./textUtils";
+import { sanitizeMarkdown, sanitizeUserInput, sanitizeForAudio, sanitizeMindMapNode, stripHtml } from "./textUtils";
 import { setupCollabWebSocket, notifySessionEnded } from "./collabWebSocket";
 import {
 
@@ -28,7 +28,6 @@ import { eq, and, isNull, asc } from "drizzle-orm";
 
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -858,6 +857,177 @@ Do not include any additional text, explanations, or markdown formatting - just 
     }
   });
 
+  type QuerySearchResultItem =
+    | { source: "local"; material: any; title: string; summaryContent: string | null; fileUrl: string; fileName: string }
+    | { source: "web"; title: string; summaryContent: string | null; fileUrl: string; fileName?: string };
+
+  async function runQuerySearch(userId: string, query: string): Promise<QuerySearchResultItem[]> {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const materials = await storage.getStudyMaterialsByUser(userId);
+    const results: QuerySearchResultItem[] = [];
+    for (const material of materials) {
+      const matchesTitle = material.title?.toLowerCase().includes(q);
+      const matchesFileName = material.fileName?.toLowerCase().includes(q);
+      let matchesTopic = false;
+      const topicsRow = await storage.getMaterialTopics(material.id);
+      if (topicsRow?.topics && Array.isArray(topicsRow.topics)) {
+        const topics = topicsRow.topics as string[];
+        matchesTopic = topics.some((t) => String(t).toLowerCase().includes(q));
+      }
+      let matchesContext = false;
+      if (!matchesTitle && !matchesFileName && !matchesTopic && material.extractedText) {
+        const snippet = material.extractedText.length > 8000
+          ? material.extractedText.substring(0, 8000)
+          : material.extractedText;
+        matchesContext = snippet.toLowerCase().includes(q);
+      }
+      if (!matchesTitle && !matchesFileName && !matchesTopic && !matchesContext) continue;
+      const summary = await storage.getSummaryByMaterial(material.id);
+      const summaryContent = summary?.content ?? null;
+      results.push({
+        source: "local",
+        material,
+        title: material.title ?? material.fileName ?? "Untitled",
+        summaryContent,
+        fileUrl: material.fileUrl,
+        fileName: material.fileName ?? "file",
+      });
+    }
+    return results;
+  }
+
+  type WebFilter =
+    | "all"
+    | "pdf"
+    | "ppt"
+    | "doc"
+    | "txt"
+    | "xls"
+    | "site_edu"
+    | "site_gov"
+    | "site_org"
+    | "inurl_pdf"
+    | "inurl_download"
+    | "link";
+
+  const WEB_FILTER_VALUES: WebFilter[] = [
+    "all", "pdf", "ppt", "doc", "txt", "xls",
+    "site_edu", "site_gov", "site_org", "inurl_pdf", "inurl_download", "link",
+  ];
+
+  function buildSerperQuery(q: string, filter: WebFilter): string {
+    const base = q.trim();
+    if (filter === "all" || filter === "link") return base;
+    if (base.includes("filetype:") && ["pdf", "ppt", "doc", "txt", "xls"].includes(filter)) return base;
+    if (base.includes("site:") && ["site_edu", "site_gov", "site_org"].includes(filter)) return base;
+    if (base.includes("inurl:") && ["inurl_pdf", "inurl_download"].includes(filter)) return base;
+    switch (filter) {
+      case "pdf": return base + " filetype:pdf";
+      case "ppt": return base + " (filetype:ppt OR filetype:pptx)";
+      case "doc": return base + " (filetype:doc OR filetype:docx)";
+      case "txt": return base + " filetype:txt";
+      case "xls": return base + " (filetype:xls OR filetype:xlsx)";
+      case "site_edu": return base + " site:edu";
+      case "site_gov": return base + " site:gov";
+      case "site_org": return base + " site:org";
+      case "inurl_pdf": return base + " inurl:pdf";
+      case "inurl_download": return base + " inurl:download";
+      default: return base;
+    }
+  }
+
+  async function fetchSerperWebResults(query: string, filter: WebFilter): Promise<QuerySearchResultItem[]> {
+    const apiKey = process.env.SERPER_API_KEY || process.env.websearch_api_key;
+    if (!apiKey) {
+      console.warn("Query Search: SERPER_API_KEY (or websearch_api_key) not set, web results skipped");
+      return [];
+    }
+    if (!query.trim()) return [];
+    const serperQ = buildSerperQuery(query, filter);
+    try {
+      const res = await fetch("https://google.serper.dev/search", {
+        method: "POST",
+        headers: {
+          "X-API-KEY": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ q: serperQ }),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("Serper API error:", res.status, errText);
+        return [];
+      }
+      const data = await res.json();
+      const items = data?.organic;
+      if (!Array.isArray(items)) {
+        if (data?.message) console.warn("Serper response:", data.message);
+        return [];
+      }
+      return items.map((r: { title?: string; link?: string; snippet?: string; displayed_link?: string }) => {
+        const rawSnippet = r.snippet ?? r.displayed_link ?? "";
+        const summaryContent = stripHtml(rawSnippet) || null;
+        const link = r.link ?? "#";
+        const rawTitle = r.title ?? "Untitled";
+        return {
+          source: "web" as const,
+          title: stripHtml(rawTitle),
+          summaryContent,
+          fileUrl: link,
+          fileName: link ? link.split("/").pop()?.split("?")[0] : undefined,
+        };
+      });
+    } catch (err) {
+      console.error("Serper web search error:", err);
+      return [];
+    }
+  }
+
+  app.get("/api/query-search", isAuthenticated, async (req: any, res) => {
+    try {
+      const q = (req.query.q as string)?.trim();
+      const filter = ((req.query.filter as string) || "all").toLowerCase() as WebFilter;
+      const validFilter: WebFilter = WEB_FILTER_VALUES.includes(filter) ? filter : "all";
+      if (!q) {
+        return res.json({ results: [] });
+      }
+      const userId = req.user.id;
+      const localResults = await runQuerySearch(userId, q);
+      const webResults = await fetchSerperWebResults(q, validFilter);
+      const results: QuerySearchResultItem[] = [...localResults, ...webResults];
+      await storage.createQuerySearch(userId, q);
+      res.json({ results });
+    } catch (error) {
+      console.error("Error running query search:", error);
+      res.status(500).json({ message: "Failed to run query search" });
+    }
+  });
+
+  app.get("/api/query-search/history", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const limit = parseInt((req.query.limit as string) || "20", 10) || 20;
+      const searches = await storage.getQuerySearchesByUser(userId, Math.min(limit, 50));
+      res.json({ searches });
+    } catch (error) {
+      console.error("Error fetching query search history:", error);
+      res.status(500).json({ message: "Failed to fetch search history" });
+    }
+  });
+
+  app.delete("/api/query-search/history/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const id = req.params.id;
+      if (!id) return res.status(400).json({ message: "Missing search id" });
+      await storage.deleteQuerySearch(id, userId);
+      res.json({ deleted: true });
+    } catch (error) {
+      console.error("Error deleting query search:", error);
+      res.status(500).json({ message: "Failed to delete search" });
+    }
+  });
 
   app.get("/api/flashcards", isAuthenticated, async (req: any, res) => {
     try {
